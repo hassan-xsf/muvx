@@ -10,7 +10,7 @@ import {
   type FileUIPart,
   type UIMessage,
 } from "ai";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import AI_Input_Search from "@/components/kokonutui/ai-input-search";
 import {
@@ -1762,6 +1762,54 @@ export default function ChatInterface() {
     id: "ai-chat",
   });
 
+  const [responseJustCompleted, setResponseJustCompleted] = useState(false);
+  const wasBusyRef = useRef(false);
+
+  const latestMessage = messages[messages.length - 1];
+  const isToolRunning =
+    latestMessage?.role === "assistant" &&
+    latestMessage.parts.some(
+      (part) =>
+        isToolUIPart(part) &&
+        (part.state === "input-streaming" || part.state === "input-available")
+    );
+
+  useEffect(() => {
+    if (status === "submitted" || status === "streaming") {
+      wasBusyRef.current = true;
+      setResponseJustCompleted(false);
+      return;
+    }
+
+    if (status === "error") {
+      wasBusyRef.current = false;
+      return;
+    }
+
+    if (status === "ready" && wasBusyRef.current) {
+      wasBusyRef.current = false;
+      setResponseJustCompleted(true);
+      const timeoutId = window.setTimeout(() => {
+        setResponseJustCompleted(false);
+      }, 1100);
+
+      return () => window.clearTimeout(timeoutId);
+    }
+  }, [status]);
+
+  const copilotMood: BotMood =
+    status === "error"
+      ? "wow"
+      : status === "submitted"
+        ? "think"
+        : isToolRunning
+          ? "tool"
+          : status === "streaming"
+            ? "listen"
+            : responseJustCompleted
+              ? "happy"
+              : interactiveMood;
+
   // Fetch all dynamically available models from provider on mount
   useEffect(() => {
     fetch("/api/models")
@@ -1866,14 +1914,8 @@ export default function ChatInterface() {
             size="lg"
             coat={botCoat}
             role={activeSpecialist}
-            mood={
-              status === "submitted"
-                ? "think"
-                : status === "streaming"
-                  ? "listen"
-                  : interactiveMood
-            }
-            showDots={status === "submitted" || interactiveMood === "think"}
+            mood={copilotMood}
+            showDots={copilotMood === "think"}
             className="mb-1 mx-auto"
           />
 
@@ -2025,6 +2067,15 @@ export default function ChatInterface() {
       {/* Grok Bot Teams Header Dots */}
       <div className="shrink-0 border-b border-brand-rule/60 bg-brand-card/40 px-4 py-2 flex items-center justify-between text-xs">
         <div className="flex items-center gap-2">
+          <MuvxBot
+            size="xs"
+            coat={botCoat}
+            role={activeSpecialist}
+            mood={copilotMood}
+            showDots={copilotMood === "think"}
+            interactive={false}
+            className="shrink-0"
+          />
           <span className="font-mono text-[10px] uppercase tracking-wider text-brand-muted-soft">Team:</span>
           <div className="flex items-center gap-1.5 flex-wrap">
             {SPECIALIST_TEAMS.map((sp) => {
@@ -2090,13 +2141,7 @@ export default function ChatInterface() {
                         size="xs"
                         coat={botCoat}
                         role={activeSpecialist}
-                        mood={
-                          isLastMessage && status === "streaming"
-                            ? "listen"
-                            : isLastMessage && status === "submitted"
-                              ? "think"
-                              : "idle"
-                        }
+                        mood={isLastMessage ? copilotMood : "idle"}
                       />
                       <span className="text-xs font-medium text-brand-ink/90">
                         {SPECIALIST_TEAMS.find((s) => s.id === activeSpecialist)?.name || "Muvx"}
@@ -2129,7 +2174,14 @@ export default function ChatInterface() {
             {status === "submitted" && (
               <Message from="assistant" className="gap-1.5">
                 <div className="flex items-center gap-2 mb-0.5 select-none">
-                  <MuvxBot size="xs" coat={botCoat} role={activeSpecialist} mood="think" />
+                  <MuvxBot
+                    size="xs"
+                    coat={botCoat}
+                    role={activeSpecialist}
+                    mood={copilotMood}
+                    showDots={copilotMood === "think"}
+                    interactive={false}
+                  />
                   <span className="text-xs font-medium text-brand-ink/90">
                     {SPECIALIST_TEAMS.find((s) => s.id === activeSpecialist)?.name || "Muvx"}
                   </span>
