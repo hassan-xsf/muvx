@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, memo } from "react";
 import { cn } from "@/lib/utils";
 
-export type BotMood = "idle" | "listen" | "think" | "happy" | "sleep" | "wow";
+export type BotMood = "idle" | "listen" | "think" | "tool" | "happy" | "sleep" | "wow";
 export type BotCoat =
   | "ink"
   | "cream"
@@ -221,6 +221,14 @@ export const MuvxBot = memo(function MuvxBot({
           0%, 100% { transform: rotate(-3deg) scale(1, 1); }
           50% { transform: rotate(3deg) scale(1.01, 0.99); }
         }
+        @keyframes mote-tool {
+          0%, 100% { transform: translateY(0) scale(1, 1); }
+          50% { transform: translateY(-4px) scale(1.035, 0.965); }
+        }
+        @keyframes mote-orbit {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
         @keyframes dot-pulse {
           0%, 70%, 100% { opacity: 0.25; transform: translateY(0); }
           35% { opacity: 1; transform: translateY(-5px); }
@@ -264,6 +272,32 @@ export const MuvxBot = memo(function MuvxBot({
             }}
           />
 
+          {/* Activity ring: slower while thinking, faster during tool execution */}
+          {(mood === "think" || mood === "tool") && (
+            <g
+              style={{
+                transformBox: "view-box",
+                transformOrigin: "160px 160px",
+                animation:
+                  mood === "tool"
+                    ? "mote-orbit 0.65s linear infinite"
+                    : "mote-orbit 2.2s linear infinite",
+              }}
+            >
+              <circle
+                cx="160"
+                cy="160"
+                r={isChild ? 100 : 118}
+                fill="none"
+                stroke={palette.blush}
+                strokeWidth={mood === "tool" ? 4 : 3}
+                strokeDasharray={mood === "tool" ? "7 9" : "18 14"}
+                strokeLinecap="round"
+                opacity={mood === "tool" ? 0.95 : 0.7}
+              />
+            </g>
+          )}
+
           {/* Organic Blob Body with Responsive Mood Motion */}
           <g
             style={{
@@ -271,7 +305,9 @@ export const MuvxBot = memo(function MuvxBot({
               animation:
                 mood === "happy"
                   ? "mote-happy 0.7s ease-in-out infinite"
-                  : mood === "listen"
+                  : mood === "tool"
+                    ? "mote-tool 0.8s ease-in-out infinite"
+                    : mood === "listen"
                     ? "mote-listen 2.4s ease-in-out infinite"
                     : mood === "think"
                       ? "mote-think 2.2s ease-in-out infinite"
