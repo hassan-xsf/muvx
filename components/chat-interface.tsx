@@ -1765,14 +1765,19 @@ export default function ChatInterface() {
   const [responseJustCompleted, setResponseJustCompleted] = useState(false);
   const wasBusyRef = useRef(false);
 
-  const latestMessage = messages[messages.length - 1];
-  const isToolRunning =
-    latestMessage?.role === "assistant" &&
-    latestMessage.parts.some(
-      (part) =>
-        isToolUIPart(part) &&
-        (part.state === "input-streaming" || part.state === "input-available")
-    );
+  // Tool calls can be present in an earlier assistant message during multi-step agent runs.
+  // Inspect all assistant messages so the orb stays in tool mode until the tool part reaches a terminal state.
+  const isToolRunning = messages.some(
+    (message) =>
+      message.role === "assistant" &&
+      message.parts.some(
+        (part) =>
+          isToolUIPart(part) &&
+          (part.state === "input-streaming" ||
+            part.state === "input-available" ||
+            part.state === "approval-responded")
+      )
+  );
 
   useEffect(() => {
     if (status === "submitted" || status === "streaming") {
@@ -2068,7 +2073,7 @@ export default function ChatInterface() {
       <div className="shrink-0 border-b border-brand-rule/60 bg-brand-card/40 px-4 py-2 flex items-center justify-between text-xs">
         <div className="flex items-center gap-2">
           <MuvxBot
-            size="xs"
+            size="sm"
             coat={botCoat}
             role={activeSpecialist}
             mood={copilotMood}
