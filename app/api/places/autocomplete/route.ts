@@ -9,7 +9,7 @@ interface Suggestion {
   state?: string
   zip?: string
   country?: string
-  source: "google" | "photon"
+  source: "google" | "nominatim" | "photon"
 }
 
 export async function GET(req: Request) {
@@ -25,13 +25,13 @@ export async function GET(req: Request) {
     process.env.GOOGLE_MAPS_API_KEY ||
     process.env.GOOGLE_API_KEY
 
-  // 1. Try Google Places API if key exists
+  // 1. Try Google Places API if valid key exists
   if (googleKey && !googleKey.startsWith("AIzaSy_REDACTED")) {
     try {
       const gUrl = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
         input
       )}&types=geocode|establishment&key=${googleKey}`
-      const gRes = await fetch(gUrl, { signal: AbortSignal.timeout(3500) })
+      const gRes = await fetch(gUrl, { signal: AbortSignal.timeout(2500) })
       if (gRes.ok) {
         const gData = await gRes.json()
         if (gData.status === "OK" && Array.isArray(gData.predictions) && gData.predictions.length > 0) {
@@ -45,46 +45,56 @@ export async function GET(req: Request) {
           return NextResponse.json({ suggestions })
         }
       }
-    } catch (e) {
-      // Fallback below
+    } catch {
+      // Fall through to Nominatim
     }
   }
 
-  // 2. High-reliability fallback: Photon / OpenStreetMap Geocoding
+  // 2. High-speed, high-accuracy Nominatim OpenStreetMap Geocoding
   try {
-    const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(
+    const nomUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
       input
-    )}&limit=6`
-    const pRes = await fetch(photonUrl, {
-      headers: { "User-Agent": "MuvxTMS/1.0" },
+    )}&format=json&addressdetails=1&limit=6`
+    const nRes = await fetch(nomUrl, {
+      headers: {
+        "User-Agent": "MuvxLogisticsApp/1.0 (dispatch@muvx.com)",
+        Accept: "application/json",
+      },
       signal: AbortSignal.timeout(3500),
     })
 
-    if (pRes.ok) {
-      const pData = await pRes.json()
-      if (Array.isArray(pData.features)) {
-        const suggestions: Suggestion[] = pData.features.map((f: any, idx: number) => {
-          const p = f.properties || {}
-          const streetNum = p.housenumber ? `${p.housenumber} ` : ""
-          const street = p.street ? `${streetNum}${p.street}` : p.name || ""
-          const city = p.city || p.locality || p.county || ""
-          const state = p.state || ""
-          const zip = p.postcode || ""
-          const country = p.countrycode?.toUpperCase() || (p.country === "Canada" ? "CA" : "US")
+    if (nRes.ok) {
+      const nData = await nRes.json()
+      if (Array.isArray(nData) && nData.length > 0) {
+        const suggestions: Suggestion[] = nData.map((item: any, idx: number) => {
+          const addr = item.address || {}
+          const houseNumber = addr.house_number ? `${addr.house_number} ` : ""
+          const street = addr.road ? `${houseNumber}${addr.road}` : item.name || ""
+          const city =
+            addr.city ||
+            addr.town ||
+            addr.village ||
+            addr.municipality ||
+            addr.county ||
+            ""
+          const state = addr.state || ""
+          const zip = addr.postcode || ""
+          const country = (addr.country_code || "us").toUpperCase()
 
-          const parts = [street, city, state, zip].filter(Boolean)
-          const description = parts.join(", ")
+          const mainText = street || item.name || city
+          const secondaryParts = [city, state, country].filter(Boolean)
+          const secondaryText = secondaryParts.join(", ")
 
           return {
-            id: `photon-${p.osm_id || idx}`,
-            description: description || p.name || input,
-            mainText: street || p.name || description,
-            secondaryText: [city, state, country].filter(Boolean).join(", "),
+            id: `osm-${item.place_id || idx}`,
+            description: item.display_name,
+            mainText,
+            secondaryText,
             city,
             state,
             zip,
             country,
-            source: "photon",
+            source: "nominatim",
           }
         })
 
@@ -92,7 +102,7 @@ export async function GET(req: Request) {
       }
     }
   } catch (err) {
-    console.error("Address autocomplete error:", err)
+    console.error("Nominatim geocoding error:", err)
   }
 
   return NextResponse.json({ suggestions: [] })
