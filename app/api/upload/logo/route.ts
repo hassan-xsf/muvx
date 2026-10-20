@@ -4,10 +4,9 @@
  * Flow:
  *   1. Client POSTs { contentType, contentLength } (headers only, no file bytes)
  *   2. Server validates tenant + permission + file constraints
- *   3. Server returns { uploadUrl, key, publicUrl, maxSize, allowedTypes }
+ *   3. Server returns { uploadUrl, key, maxSize, allowedTypes }
  *   4. Client uploads the file directly to S3 via PUT (fetch)
- *   5. Client sends the publicUrl to PATCH /api/settings/workspace-profile
- *      as { logo: publicUrl }
+ *   5. Client saves the returned key through the workspace profile action
  *
  * The server never touches the file bytes — credentials stay server-side.
  */

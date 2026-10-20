@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import { updateWorkspaceProfileAction } from "@/app/actions/workspace"
 import { SettingsPageHeader } from "@/components/settings/settings-page-header"
+import { getWorkspaceLogoImageSource } from "@/lib/workspace-logo-url"
 
 type Profile = {
   id: string
@@ -75,10 +76,10 @@ export function BrandingClient() {
       return
     }
     setUploading(true)
+    const localUrl = URL.createObjectURL(file)
+    setLogoUrl(localUrl)
+    setRemoved(false)
     try {
-      const localUrl = URL.createObjectURL(file)
-      setLogoUrl(localUrl)
-      setRemoved(false)
       const fd = new FormData()
       fd.append("file", file)
       const r = await fetch("/api/uploads/logo", { method: "POST", body: fd })
@@ -87,9 +88,15 @@ export function BrandingClient() {
         throw new Error(j.error || "Upload failed")
       }
       const j = await r.json()
-      setLogoUrl(j.url)
+      if (typeof j.key !== "string") {
+        throw new Error("Upload response did not include a workspace logo key.")
+      }
+      setLogoUrl(j.key)
+      URL.revokeObjectURL(localUrl)
       toast.success("Logo uploaded")
     } catch (e) {
+      URL.revokeObjectURL(localUrl)
+      setLogoUrl(data?.profile.logo ?? null)
       toast.error((e as Error).message || "Upload failed")
     } finally {
       setUploading(false)
@@ -185,7 +192,7 @@ export function BrandingClient() {
                 <div className="size-28 rounded-xl border border-brand-rule overflow-hidden bg-brand-cream flex items-center justify-center">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={logoUrl}
+                    src={getWorkspaceLogoImageSource(logoUrl, data.profile.id)}
                     alt="Workspace logo"
                     className="max-h-full max-w-full object-contain"
                   />

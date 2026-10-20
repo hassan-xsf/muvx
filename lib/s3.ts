@@ -38,16 +38,20 @@ export const s3Configured = !!bucket
  * aren't set (e.g. local dev without S3). The functions below check `bucket`
  * at call time and throw a clear error.
  */
-let _s3: S3Client | null = null
-function getS3(): S3Client {
-  if (!bucket) {
+const _s3Clients = new Map<string, S3Client>()
+function getS3(
+  clientRegion = region,
+  bucketName: string | undefined = bucket,
+): S3Client {
+  if (!bucketName) {
     throw new Error(
       "S3 storage is not configured — set MUVX_AWS_BUCKET in your environment",
     )
   }
-  if (!_s3) {
-    _s3 = new S3Client({
-      region,
+  let client = _s3Clients.get(clientRegion)
+  if (!client) {
+    client = new S3Client({
+      region: clientRegion,
       credentials:
         process.env.MUVX_AWS_ACCESS_KEY_ID && process.env.MUVX_AWS_SECRET_ACCESS_KEY
           ? {
@@ -56,8 +60,9 @@ function getS3(): S3Client {
             }
           : undefined, // fall back to default credential chain (SSO/EC2/ECS)
     })
+    _s3Clients.set(clientRegion, client)
   }
-  return _s3
+  return client
 }
 
 // ─── Key path helpers ─────────────────────────────────────────────
@@ -96,6 +101,29 @@ export async function createPresignedPut(
   return { url }
 }
 
+/** Upload a server-received file using the configured private S3 storage. */
+export async function uploadObject(
+  key: string,
+  body: Uint8Array,
+  contentType: string,
+  storage?: { bucket: string; region: string },
+): Promise<void> {
+  const targetBucket = storage?.bucket ?? bucket
+  if (!targetBucket) {
+    throw new Error(
+      "S3 storage is not configured — set MUVX_AWS_BUCKET in your environment",
+    )
+  }
+  await getS3(storage?.region, targetBucket).send(
+    new PutObjectCommand({
+      Bucket: targetBucket,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    }),
+  )
+}
+
 /** Full public URL for a key stored in the bucket. 
  * Note: Objects are private by default (bucket blocks public ACLs).
  * For public access, use presigned GET URLs with appropriate expiry.
@@ -105,7 +133,7 @@ export function publicUrl(key: string): string {
 }
 
 /**
- * Generate a presigned GET URL for public sharing (e.g., invoice logos).
+ * Generate a time-limited presigned GET URL for a private S3 object.
  *
  * `mediaType` is passed through as S3's `ResponseContentType`, which overrides
  * the stored Content-Type on the response. Without it a GET can come back as
@@ -117,14 +145,26 @@ export async function createPresignedGet(
   key: string,
   expiresInSec = 3600, // 1 hour default
   mediaType?: string,
+  storage?: { bucket: string; region: string },
 ): Promise<{ url: string }> {
   const { GetObjectCommand } = await import("@aws-sdk/client-s3")
+  const targetBucket = storage?.bucket ?? bucket
+  const targetRegion = storage?.region ?? region
+  if (!targetBucket) {
+    throw new Error(
+      "S3 storage is not configured — set MUVX_AWS_BUCKET in your environment",
+    )
+  }
   const command = new GetObjectCommand({
-    Bucket: bucket,
+    Bucket: targetBucket,
     Key: key,
     ...(mediaType ? { ResponseContentType: mediaType } : {}),
   })
-  const url = await getSignedUrl(getS3(), command, { expiresIn: expiresInSec })
+  const url = await getSignedUrl(
+    getS3(targetRegion, targetBucket),
+    command,
+    { expiresIn: expiresInSec },
+  )
   return { url }
 }
 
@@ -148,5 +188,12 @@ export async function bucketExists(): Promise<boolean> {
   }
 }
 
-const self = { createPresignedPut, publicUrl, deleteObject, bucketExists, logoKey }
+const self = {
+  createPresignedPut,
+  publicUrl,
+  uploadObject,
+  deleteObject,
+  bucketExists,
+  logoKey,
+}
 export default self

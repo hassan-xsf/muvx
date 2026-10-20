@@ -1,6 +1,10 @@
 import "server-only"
 
-import { createPresignedPut, publicUrl, deleteObject, logoKey } from "@/lib/s3"
+import {
+  createPresignedPut,
+  deleteObject,
+  logoKey,
+} from "@/lib/s3"
 import { requireTenant, requirePermission } from "@/lib/dal"
 
 /**
@@ -13,8 +17,8 @@ import { requireTenant, requirePermission } from "@/lib/dal"
  *
  * Usage from a route handler:
  *   const { uploadUrl, key } = await presignWorkspaceLogo()
- *   // browser uploads to uploadUrl, then PATCH /api/settings/workspace-profile
- *   // with { logo: publicUrl(key) }
+ *   // browser uploads to uploadUrl, then saves { logo: key } through the
+ *   // workspace profile action.
  */
 
 // ─── Logo upload ──────────────────────────────────────────────────
@@ -28,12 +32,35 @@ const ALLOWED_IMAGE_TYPES = [
 
 const MAX_LOGO_SIZE = 5 * 1024 * 1024 // 5 MB
 
+function isAllowedImageType(
+  contentType: string,
+): contentType is (typeof ALLOWED_IMAGE_TYPES)[number] {
+  return (ALLOWED_IMAGE_TYPES as readonly string[]).includes(contentType)
+}
+
 export interface LogoUploadUrlResult {
   uploadUrl: string
   key: string
-  publicUrl: string
   maxSize: number
   allowedTypes: readonly string[]
+}
+
+/** True only for server-generated logo keys in this workspace's namespaces. */
+export function isWorkspaceLogoKey(
+  workspaceId: string,
+  key: string,
+): boolean {
+  const escapedWorkspaceId = workspaceId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  return (
+    new RegExp(
+      `^logos/${escapedWorkspaceId}-\\d+\\.(?:png|jpe?g|webp|gif)$`,
+      "i",
+    ).test(key) ||
+    new RegExp(
+      `^workspace-logos/${escapedWorkspaceId}/[a-f0-9-]+\\.(?:png|jpe?g|webp|svg)$`,
+      "i",
+    ).test(key)
+  )
 }
 
 /**
@@ -51,7 +78,7 @@ export async function presignWorkspaceLogo(
   // Only owner + admin can change the logo (same gate as profile edit)
   await requirePermission({ resource: "workspace", action: "update" })
 
-  if (!ALLOWED_IMAGE_TYPES.includes(opts.contentType as any)) {
+  if (!isAllowedImageType(opts.contentType)) {
     throw new Error(
       `Unsupported file type: ${opts.contentType}. Allowed: ${ALLOWED_IMAGE_TYPES.join(", ")}`,
     )
@@ -72,7 +99,6 @@ export async function presignWorkspaceLogo(
   return {
     uploadUrl: url,
     key,
-    publicUrl: publicUrl(key),
     maxSize: MAX_LOGO_SIZE,
     allowedTypes: ALLOWED_IMAGE_TYPES,
   }
@@ -85,7 +111,7 @@ export async function deleteWorkspaceLogo(
   const ctx = await requireTenant()
   await requirePermission({ resource: "workspace", action: "update" })
   // Ensure the key belongs to this workspace
-  if (!key.startsWith(`logos/${ctx.tenantId}-`)) {
+  if (!isWorkspaceLogoKey(ctx.tenantId, key)) {
     throw new Error("Logo key does not belong to this workspace")
   }
   await deleteObject(key)

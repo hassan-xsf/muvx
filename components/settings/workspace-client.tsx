@@ -43,6 +43,7 @@ import { cn } from "@/lib/utils"
 import { getAvailableTimezones } from "@/lib/timezone"
 import { getAllCurrencies } from "@/lib/currencies"
 import { getAllCountries } from "@/lib/geography"
+import { getWorkspaceLogoImageSource } from "@/lib/workspace-logo-url"
 
 const BUSINESS_TYPES = [
   { value: "carrier", label: "Carrier (Own trucks & drivers)" },
@@ -192,6 +193,16 @@ export function WorkspaceSettingsClient() {
 
   // ─── Local form state ────────────────────────────────────────────
   const [form, setForm] = useState<Partial<Profile>>({})
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null)
+  const [logoPreviewOrganizationId, setLogoPreviewOrganizationId] = useState<
+    string | null
+  >(null)
+
+  useEffect(() => {
+    return () => {
+      if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl)
+    }
+  }, [logoPreviewUrl])
 
   useEffect(() => {
     if (profileQuery.data) {
@@ -304,6 +315,8 @@ export function WorkspaceSettingsClient() {
         return
       }
       toast.success("Workspace profile updated")
+      setLogoPreviewUrl(null)
+      setLogoPreviewOrganizationId(null)
       if (activeOrg && result.organization) {
         setActiveOrganization({
           ...activeOrg,
@@ -339,7 +352,10 @@ export function WorkspaceSettingsClient() {
         const err = await presignRes.json().catch(() => ({}))
         throw new Error(err.message || err.error || `Upload failed (${presignRes.status})`)
       }
-      const { uploadUrl, publicUrl } = await presignRes.json()
+      const { uploadUrl, key } = await presignRes.json()
+      if (typeof key !== "string") {
+        throw new Error("Upload response did not include a workspace logo key.")
+      }
 
       const putRes = await fetch(uploadUrl, {
         method: "PUT",
@@ -348,10 +364,12 @@ export function WorkspaceSettingsClient() {
       })
       if (!putRes.ok) throw new Error(`S3 upload failed (${putRes.status})`)
 
-      return publicUrl as string
+      return { key, previewUrl: URL.createObjectURL(file) }
     },
-    onSuccess: (url) => {
-      setForm((s) => ({ ...s, logo: url }))
+    onSuccess: ({ key, previewUrl }) => {
+      setForm((s) => ({ ...s, logo: key }))
+      setLogoPreviewUrl(previewUrl)
+      setLogoPreviewOrganizationId(activeOrg?.id ?? null)
       toast.success("Logo uploaded. Remember to save changes.")
     },
     onError: (err: Error) => {
@@ -571,7 +589,15 @@ export function WorkspaceSettingsClient() {
             {form.logo ? (
               <Avatar className="size-20 border border-brand-rule">
                 <AvatarImage
-                  src={form.logo}
+                  src={
+                    (logoPreviewOrganizationId === activeOrg?.id
+                      ? logoPreviewUrl
+                      : null) ??
+                    getWorkspaceLogoImageSource(
+                      form.logo,
+                      activeOrg?.id ?? profileQuery.data?.id,
+                    )
+                  }
                   alt={form.name ?? "Workspace logo"}
                   className="object-cover"
                 />

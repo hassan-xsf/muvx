@@ -6,6 +6,7 @@ import { db } from "@/lib/db"
 import { organization, user as userTable } from "@/lib/schema"
 import { requireTenant, requirePermission, TenantError } from "@/lib/dal"
 import { recordAuditEvent } from "@/lib/audit"
+import { isWorkspaceLogoKey } from "@/lib/storage"
 // Field-level permission map removed per Q&A (Oct 15, 2026):
 // Owner + Admin can edit any field. The resource-level
 // `workspace: ["update"]` gate (line ~118) is the only permission
@@ -85,8 +86,7 @@ const profileSchema = z.object({
     .default("01-01"),
   logo: z
     .string()
-    .url("Logo must be a valid URL")
-    .max(2048, "Logo URL is too long")
+    .max(2048, "Logo value is too long")
     .nullable()
     .optional()
     .or(z.literal("").transform(() => null)),
@@ -145,6 +145,17 @@ async function withUpdateWorkspaceProfile(
     return { ok: false, error: "VALIDATION_ERROR", fieldErrors }
   }
   const data = parsed.data
+  if (
+    data.logo &&
+    !z.string().url().safeParse(data.logo).success &&
+    !isWorkspaceLogoKey(ctx.tenantId, data.logo)
+  ) {
+    return {
+      ok: false,
+      error: "VALIDATION_ERROR",
+      fieldErrors: { logo: ["Logo must be a valid URL or a logo uploaded to this workspace."] },
+    }
+  }
 
   // 3. Snapshot before
   const [before] = await db
