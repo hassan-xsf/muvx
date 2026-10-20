@@ -274,8 +274,8 @@ function ApprovalCard({
 }
 function ActivePulseDot() {
   return (
-    <span className="relative flex size-3 items-center justify-center">
-      <span className="absolute size-2 rounded-full bg-brand-accent/25 animate-ping" />
+    <span className="relative flex size-2 items-center justify-center">
+      <span className="absolute inset-0 rounded-full bg-brand-accent/25 animate-ping" />
       <Circle className="relative size-2 fill-brand-accent text-brand-accent animate-pulse" />
     </span>
   );
@@ -689,21 +689,30 @@ export function ToolPartList({
               className={cn(
                 "absolute -left-3 w-px bg-brand-rule",
                 only && !active && "hidden",
-                only && active && "top-5 bottom-0",
-                !only && first && "top-5 bottom-0",
-                !only && last && "top-0 bottom-5",
+                // Starts/stops at the dot centre (14px from the row top),
+                // so the rail meets the dot instead of overshooting it.
+                only && active && "top-3.5 bottom-0",
+                !only && first && "top-3.5 bottom-0",
+                !only && last && "top-0 bottom-3.5",
                 !only && !first && !last && "top-0 bottom-0",
               )}
             />
             {/* Status dot: hollow ring at rest, filled + pulsing while active,
-                red on error, accent-filled while an approval is pending. */}
-            <span className="absolute -left-[18px] top-2 flex size-2.5 items-center justify-center bg-brand-cream">
+                red on error, accent-filled while an approval is pending.
+
+                Alignment: the row is `py-1` (4px) and its icon is `mt-0.5`
+                (2px) on a `size-4` (16px) box, so the icon centre sits 14px
+                from the row top. This slot is a 28px-tall flex box pinned to
+                the row top, so its centre lands on exactly that line — and
+                because BOTH dot states centre inside the same slot, the dot
+                no longer shifts when a step starts or finishes. */}
+            <span className="absolute -left-4.5 top-0 flex h-7 w-3 items-center justify-center bg-brand-cream">
               {active || awaiting ? (
                 <ActivePulseDot />
               ) : (
                 <Circle
                   className={cn(
-                    "size-[7px] border",
+                    "size-1.75 border",
                     error
                       ? "border-rose-500 bg-rose-500"
                       : "border-brand-muted-soft/60 bg-transparent",
