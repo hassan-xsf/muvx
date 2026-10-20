@@ -57,9 +57,7 @@ export const queryCustomersTool = defineTmsTool({
 
 export const createCustomerTool = defineTmsTool({
   name: "createCustomer",
-  description: "Add a new shipper or freight broker customer to the master directory. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Adding a customer creates a billing entity with credit terms.",
+  description: "Add a new shipper or freight broker customer to the master directory.",
   requiredPermissions: ["customers.create"],
   inputSchema: z.object({
     name: z.string().describe("Company or broker name"),

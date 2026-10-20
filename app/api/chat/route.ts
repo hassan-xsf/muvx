@@ -101,132 +101,10 @@ export async function POST(req: NextRequest) {
       allowAll: isAllowAll,
     }))
 
-    // ── Approval-flow deep log (server) ────────────────────────────────
-    // Every approval-card turn lands here with three possible flows. We
-    // log every part's terminal state before we touch anything so a
-    // single `grep approval` tells the whole story of a stuck turn.
-    const approvalCounts = {
-      approvalRequested: 0,
-      approvalRespondedApproved: 0,
-      approvalRespondedDenied: 0,
-      inputStreaming: 0,
-      inputAvailable: 0,
-      outputAvailable: 0,
-      outputError: 0,
-      outputDenied: 0,
-    };
-    for (const m of messages as UIMessage[]) {
-      for (const p of m.parts) {
-        if (!isToolUIPart(p)) continue;
-        if (p.state === "approval-requested") approvalCounts.approvalRequested++;
-        else if (p.state === "approval-responded") {
-          const approved = (p as { approval?: { approved?: boolean } }).approval
-            ?.approved;
-          if (approved === true) approvalCounts.approvalRespondedApproved++;
-          else if (approved === false)
-            approvalCounts.approvalRespondedDenied++;
-        } else if (p.state === "input-streaming") approvalCounts.inputStreaming++;
-        else if (p.state === "input-available") approvalCounts.inputAvailable++;
-        else if (p.state === "output-available") approvalCounts.outputAvailable++;
-        else if (p.state === "output-error") approvalCounts.outputError++;
-        else if (p.state === "output-denied") approvalCounts.outputDenied++;
-      }
-    }
-    trace.approvalReceived({
-      trigger: body.trigger ?? "submit-message",
-      messageId: body.messageId ?? null,
-      resendFlag: body.resend ?? body.resendStreamId ?? null,
-      ...approvalCounts,
-    });
-
-    // ── Approval-state sanitiser ──────────────────────────────────────
-    // The SDK's `convertToModelMessages` validates that every
-    // assistant tool-call has a matching tool-result and throws
-    // `AI_MissingToolResultsError` otherwise. There are three tool-part
-    // states that show up between turns and need different handling:
-    //
-    //   `approval-requested`
-    //     Stale — operator did not answer this one. Drop it. The SDK
-    //     re-emits the request when it needs to, and we don't want
-    //     this part to cause `MissingToolResults` errors.
-    //
-    //   `approval-responded` + `approved === false`
-    //     Denial. The SDK synthesises a tool-result with
-    //     `output-denied` on the next turn (see convertToModelMessages
-    //     in ai/dist/index.js around the `approval-responded` branch),
-    //     so the part STILL leaves a dangling tool-call unless we keep
-    //     it. We DO keep it — the SDK knows how to translate
-    //     approval-responded + approved=false into a synthetic result.
-    //
-    //   `approval-responded` + `approved === true`
-    //     Approved. The SDK needs this part in the next request so it
-    //     can drive execution of the tool itself (server-side execute)
-    //     and emit the tool-result. Stripping these was the cause of
-    //     the "approval granted, conversation stops" bug — the model
-    //     never received the matching tool-result on the next turn and
-    //     stalled. KEEP these parts.
-    //
-    // TL;DR: drop only `approval-requested`. Keep `approval-responded`
-    // (the SDK handles both branches cleanly).
-    const sanitizedMessages = (messages as UIMessage[]).map((m) => ({
-      ...m,
-      parts: m.parts.filter((p) => {
-        if (!isToolUIPart(p)) return true;
-        return p.state !== "approval-requested";
-      }),
-    }))
-
-    const droppedParts = (messages as UIMessage[]).reduce(
-      (n, m) =>
-        n +
-        m.parts.filter(
-          (p) => isToolUIPart(p) && p.state === "approval-requested",
-        ).length,
-      0,
-    );
-
-    trace.approvalSanitized({
-      incomingMessages: messages.length,
-      droppedApprovalParts: droppedParts,
-      keptApprovalResponded: approvalCounts.approvalRespondedApproved +
-        approvalCounts.approvalRespondedDenied,
-      approvedKept: approvalCounts.approvalRespondedApproved,
-      deniedKept: approvalCounts.approvalRespondedDenied,
-    });
-
-    const modelMessages = await convertToModelMessages(sanitizedMessages, {
+    // Convert UI messages to model format for the LLM
+    const modelMessages = await convertToModelMessages(messages as UIMessage[], {
       ignoreIncompleteToolCalls: true,
     })
-
-    // After conversion: did every tool-call pair with a tool-result?
-    // If not, the model is about to error and the response will be empty
-    // — that's the symptom we want to surface BEFORE the user sees it.
-    let toolCallCount = 0
-    let toolResultCount = 0
-    for (const m of modelMessages) {
-      const content = (m as { content?: unknown }).content
-      if (!Array.isArray(content)) continue
-      for (const block of content) {
-        const t = (block as { type?: string }).type
-        if (t === "tool-call") toolCallCount++
-        else if (t === "tool-result") toolResultCount++
-      }
-    }
-    if (toolCallCount > toolResultCount) {
-      trace.approvalDangling({
-        toolCalls: toolCallCount,
-        toolResults: toolResultCount,
-        missing: toolCallCount - toolResultCount,
-      })
-    } else if (
-      approvalCounts.approvalRespondedApproved > 0 &&
-      approvalCounts.outputAvailable === 0
-    ) {
-      trace.approvalResumed({
-        approval: "approved-without-yet-emitted-result",
-        sdkWillDriveExecution: true,
-      })
-    }
 
     const memorySnippet =
       activeMemories.length > 0
@@ -237,19 +115,7 @@ export async function POST(req: NextRequest) {
       ? `\nUSER CUSTOM PREFERENCES:\n${settings.customInstructions}`
       : ""
 
-    const systemPrompt = `.
- ${session.user.name || session.user.email} (${session.user.role || "Member"})
-Workspace: ${tenantId}
-Autonomous Mode (Allow All): ${isAllowAll ? "ENABLED (execute approved transactions without halting)" : "DISABLED (prompt user for write confirmation)"}
-work :
-- loads: ${perms.has("loads.create")}
-- trips: ${perms.has("trips.create")}
-- fleet & drivers: ${perms.has("fleet.trucks.create")}
-- invoices & billing: ${perms.has("invoices.view_all")}
-- AP expenses: ${perms.has("expenses.view_all")}
-- compliance: ${perms.has("safety.module")}
-
-.${memorySnippet}${customInstructionsSnippet}`
+    const systemPrompt = `Donny — Muvx TMS. ${session.user.name || session.user.email} | ${tenantId} | ${isAllowAll ? "FULL" : "RESTRICTED"} | l=${perms.has("loads.create")} t=${perms.has("trips.create")} f=${perms.has("fleet.trucks.create")} i=${perms.has("invoices.view_all")} e=${perms.has("expenses.view_all")}. Memory: ${memorySnippet}${customInstructionsSnippet}`
 
     const toolCtx: ToolContext = {
       userId: session.user.id,
@@ -260,19 +126,14 @@ work :
     }
 
     const toolsRecord: Record<string, any> = {}
-    const toolApprovalRecord: Record<string, any> = {}
 
     for (const t of ALL_TMS_TOOLS) {
       toolsRecord[t.name] = tool({
-        description: t.description,
         inputSchema: t.inputSchema,
         execute: async (params) => {
           const start = Date.now()
-          // Deep trace: input shape + timing go to the structured log even when
-          // the durable audit write below is async (and may itself fail).
           trace.toolStart({
             tool: t.name,
-            requiresApproval: Boolean(t.requiresApproval),
             requiredPermissions: t.requiredPermissions ?? [],
             input: params,
           })
@@ -322,26 +183,10 @@ work :
           }
         },
       })
-
-      // When allowAll is true, bypass human confirmation so the agent executes autonomously
-      if (t.requiresApproval && !isAllowAll) {
-        const reason =
-          t.approvalReason ||
-          `Authorizing ${t.name} will execute an official operational transaction.`
-        toolApprovalRecord[t.name] = { type: "user-approval", reason }
-        // Surface the gate at WARN so "why did the agent stop?" is answerable
-        // from logs alone instead of guessing from the UI.
-        trace.approval({
-          tool: t.name,
-          reason,
-          action: "gated",
-        })
-      }
     }
 
     trace.step({
       toolsRegistered: Object.keys(toolsRecord).length,
-      approvalGated: Object.keys(toolApprovalRecord),
     })
 
     const maxSteps = Math.max(
@@ -401,10 +246,6 @@ work :
           }),
         }
       },
-    }
-
-    if (!isAllowAll && Object.keys(toolApprovalRecord).length > 0) {
-      streamConfig.toolApproval = toolApprovalRecord
     }
 
 // Tool → presentation metadata for Chain-of-Thought steps.

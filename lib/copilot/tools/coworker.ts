@@ -14,8 +14,6 @@ export const assignDriverTaskTool = defineTmsTool({
   name: "assignDriverTask",
   description:
     "Assigns an operational or safety task to an active commercial driver. Handles inspections, seal verification, scale tickets, and pickup/delivery check-ins.",
-  requiresApproval: true,
-  approvalReason: "Assigning a commercial driver task creates an official operational dispatch requirement.",
   requiredPermissions: ["trips.create", "fleet.trucks.view"],
   inputSchema: z.object({
     driverName: z.string().describe("Name of the driver (e.g. 'John Doe', 'Marcus Vance')"),
@@ -111,8 +109,6 @@ export const askDriverQuestionTool = defineTmsTool({
   name: "askDriverQuestion",
   description:
     "Dispatches an operational inquiry directly to a driver via SMS/in-app messaging. Used to check detention status, ETA confirmation, or receiver delays.",
-  requiresApproval: true,
-  approvalReason: "Sending automated operational driver inquiries transmits real-time instructions to fleet drivers.",
   requiredPermissions: ["trips.create"],
   inputSchema: z.object({
     driverName: z.string().describe("Driver's full name"),
@@ -207,8 +203,6 @@ export const scheduleCoworkerTaskTool = defineTmsTool({
   name: "scheduleCoworkerTask",
   description:
     "Schedules an autonomous coworker background task to monitor fleet HOS, verify GPS arrival at shipper/receiver, or audit overdue invoices on a timeline.",
-  requiresApproval: true,
-  approvalReason: "Scheduling autonomous copilot tasks registers background monitoring and heartbeat triggers.",
   requiredPermissions: ["loads.create", "trips.create"],
   inputSchema: z.object({
     title: z.string().describe("Task title (e.g. 'Check Samsara GPS arrival in 30 mins', 'Audit missing PODs in 2 hours')"),

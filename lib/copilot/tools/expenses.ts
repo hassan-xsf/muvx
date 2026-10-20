@@ -46,9 +46,7 @@ export const reviewPendingExpensesTool = defineTmsTool({
 
 export const approveExpenseTool = defineTmsTool({
   name: "approveExpense",
-  description: "Approve an accounts payable (AP) trip expense or driver reimbursement. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Approving this AP expense authorizes financial reimbursement.",
+  description: "Approve an accounts payable (AP) trip expense or driver reimbursement.",
   requiredPermissions: ["settlements.approve"],
   inputSchema: z.object({
     expenseId: z.string().describe("ID of the expense to approve"),
@@ -93,9 +91,7 @@ export const approveExpenseTool = defineTmsTool({
 
 export const logTripExpenseTool = defineTmsTool({
   name: "logTripExpense",
-  description: "Record a new driver or trip expense (fuel, toll, maintenance, lumper fee, per diem). Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Logging an expense commits a financial liability record.",
+  description: "Record a new driver or trip expense (fuel, toll, maintenance, lumper fee, per diem).",
   requiredPermissions: ["settlements.create"],
   inputSchema: z.object({
     tripId: z.string().optional().describe("Associated Trip ID"),

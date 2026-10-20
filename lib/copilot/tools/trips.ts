@@ -9,9 +9,7 @@ import { defineTmsTool, hasPermission, permissionDeniedResult } from "../types"
 
 export const dispatchTripTool = defineTmsTool({
   name: "dispatchTrip",
-  description: "Assign an available driver and tractor unit to an active load, officially dispatching the trip. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Dispatching this trip commits fleet equipment and notifies the driver.",
+  description: "Assign an available driver and tractor unit to an active load, officially dispatching the trip.",
   requiredPermissions: ["loads.assign_driver", "loads.assign_truck"],
   inputSchema: z.object({
     loadId: z.string().describe("ID of the load to dispatch"),
@@ -95,9 +93,7 @@ export const dispatchTripTool = defineTmsTool({
 
 export const updateTripStatusTool = defineTmsTool({
   name: "updateTripStatus",
-  description: "Update status, odometer miles, or financial totals of a dispatched trip. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Updating trip status marks milestones or completes driver runs.",
+  description: "Update status, odometer miles, or financial totals of a dispatched trip.",
   requiredPermissions: ["loads.update_status"],
   inputSchema: z.object({
     tripId: z.string().describe("ID of the trip"),

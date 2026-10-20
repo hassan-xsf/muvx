@@ -94,9 +94,7 @@ export const getFleetStatusTool = defineTmsTool({
 
 export const createDriverTool = defineTmsTool({
   name: "createDriver",
-  description: "Add a new commercial driver to the fleet directory. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Adding a driver creates an authorized commercial operator in the workspace.",
+  description: "Add a new commercial driver to the fleet directory.",
   requiredPermissions: ["drivers.create"],
   inputSchema: z.object({
     firstName: z.string().describe("Driver first name"),
@@ -150,9 +148,7 @@ export const createDriverTool = defineTmsTool({
 
 export const updateDriverTool = defineTmsTool({
   name: "updateDriver",
-  description: "Update a driver's CDL renewal date, active status, or contact information. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Updating a driver modifies compliance credentials or duty status.",
+  description: "Update a driver's CDL renewal date, active status, or contact information.",
   requiredPermissions: ["drivers.edit"],
   inputSchema: z.object({
     driverId: z.string().describe("ID of the driver"),
@@ -207,9 +203,7 @@ export const updateDriverTool = defineTmsTool({
 
 export const createTruckTool = defineTmsTool({
   name: "createTruck",
-  description: "Register a commercial tractor unit in the fleet inventory. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Registering a truck adds a commercial asset to the workspace.",
+  description: "Register a commercial tractor unit in the fleet inventory.",
   requiredPermissions: ["fleet.create"],
   inputSchema: z.object({
     unitNumber: z.string().describe("Truck/unit number (e.g. TRK-104)"),
@@ -260,9 +254,7 @@ export const createTruckTool = defineTmsTool({
 
 export const updateTruckTool = defineTmsTool({
   name: "updateTruck",
-  description: "Update tractor status (available, maintenance, out_of_service) or odometer miles. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Updating tractor status affects fleet dispatch availability.",
+  description: "Update tractor status (available, maintenance, out_of_service) or odometer miles.",
   requiredPermissions: ["fleet.edit"],
   inputSchema: z.object({
     truckId: z.string().describe("ID of the truck/tractor"),
@@ -307,9 +299,7 @@ export const updateTruckTool = defineTmsTool({
 
 export const createTrailerTool = defineTmsTool({
   name: "createTrailer",
-  description: "Register a trailer (Dry Van, Reefer, Flatbed, Step Deck) in the fleet inventory. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Registering a trailer commits equipment inventory.",
+  description: "Register a trailer (Dry Van, Reefer, Flatbed, Step Deck) in the fleet inventory.",
   requiredPermissions: ["fleet.create"],
   inputSchema: z.object({
     unitNumber: z.string().describe("Trailer unit number (e.g. TLR-5301)"),

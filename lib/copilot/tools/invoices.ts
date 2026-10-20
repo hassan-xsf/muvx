@@ -79,9 +79,7 @@ export const queryInvoicesTool = defineTmsTool({
 
 export const createInvoiceTool = defineTmsTool({
   name: "createInvoice",
-  description: "Generate an official accounts receivable invoice from a delivered load. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Generating this invoice creates an official financial balance receivable.",
+  description: "Generate an official accounts receivable invoice from a delivered load.",
   requiredPermissions: ["accounting.invoices.create"],
   inputSchema: z.object({
     loadId: z.string().describe("ID of the delivered load"),
@@ -144,9 +142,7 @@ export const createInvoiceTool = defineTmsTool({
 
 export const sendInvoiceEmailTool = defineTmsTool({
   name: "sendInvoiceEmail",
-  description: "Dispatch an invoice payment package email with Resend payment link to the customer. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Sending this invoice will email the customer with payment instructions via Resend.",
+  description: "Dispatch an invoice payment package email with Resend payment link to the customer.",
   requiredPermissions: ["accounting.invoices.send"],
   inputSchema: z.object({
     invoiceId: z.string().describe("ID of the invoice to email"),
@@ -213,9 +209,7 @@ export const sendInvoiceEmailTool = defineTmsTool({
 
 export const markInvoicePaidTool = defineTmsTool({
   name: "markInvoicePaid",
-  description: "Record customer payment for an invoice, marking it as paid. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Recording payment closes out accounts receivable balance.",
+  description: "Record customer payment for an invoice, marking it as paid.",
   requiredPermissions: ["accounting.invoices.apply_payment"],
   inputSchema: z.object({
     invoiceId: z.string().describe("ID of the invoice"),

@@ -9,9 +9,7 @@ import { defineTmsTool, hasPermission, permissionDeniedResult } from "../types"
 
 export const bookLoadTool = defineTmsTool({
   name: "bookLoad",
-  description: "Book a new freight load into Muvx TMS with shipper, equipment, route, and linehaul rate. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Booking this load writes it to the operational database and notifies dispatchers.",
+  description: "Book a new freight load into Muvx TMS with shipper, equipment, route, and linehaul rate.",
   requiredPermissions: ["loads.create"],
   inputSchema: z.object({
     customerName: z.string().describe("Customer or broker name (e.g. Walmart, CH Robinson)"),
@@ -160,9 +158,7 @@ export const queryLoadsTool = defineTmsTool({
 
 export const updateLoadTool = defineTmsTool({
   name: "updateLoad",
-  description: "Update details or status of an existing freight load. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Updating this load modifies active freight contract terms or operational status.",
+  description: "Update details or status of an existing freight load.",
   requiredPermissions: ["loads.edit"],
   inputSchema: z.object({
     loadId: z.string().describe("ID of the load to update"),

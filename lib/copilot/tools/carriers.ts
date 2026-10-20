@@ -57,9 +57,7 @@ export const queryCarriersTool = defineTmsTool({
 
 export const createCarrierTool = defineTmsTool({
   name: "createCarrier",
-  description: "Onboard a partner motor carrier with MC and DOT numbers. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Onboarding a carrier authorizes them for outsourced freight dispatch.",
+  description: "Onboard a partner motor carrier with MC and DOT numbers.",
   requiredPermissions: ["fleet.create"],
   inputSchema: z.object({
     name: z.string().describe("Carrier legal name"),

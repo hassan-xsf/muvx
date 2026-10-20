@@ -69,9 +69,7 @@ export const listWorkspaceMembersTool = defineTmsTool({
 
 export const inviteWorkspaceMemberTool = defineTmsTool({
   name: "inviteWorkspaceMember",
-  description: "Send an email invitation to a new team member with an assigned role. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Sending an invitation grants authenticated access to the workspace.",
+  description: "Send an email invitation to a new team member with an assigned role.",
   requiredPermissions: ["users.invite"],
   inputSchema: z.object({
     email: z.string().email().describe("Invitee email address"),
@@ -154,9 +152,7 @@ export const inviteWorkspaceMemberTool = defineTmsTool({
 
 export const resendInvitationTool = defineTmsTool({
   name: "resendInvitation",
-  description: "Resend an invitation email to a pending team invitee. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Resending an invitation will trigger a fresh invitation email to the recipient.",
+  description: "Resend an invitation email to a pending team invitee.",
   requiredPermissions: ["users.invite"],
   inputSchema: z.object({
     invitationId: z.string().describe("ID of the pending invitation"),
@@ -215,9 +211,7 @@ export const resendInvitationTool = defineTmsTool({
 
 export const cancelInvitationTool = defineTmsTool({
   name: "cancelInvitation",
-  description: "Revoke or cancel a pending team invitation. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Cancelling an invitation revokes access before the invitee joins.",
+  description: "Revoke or cancel a pending team invitation.",
   requiredPermissions: ["users.invite"],
   inputSchema: z.object({
     invitationId: z.string().describe("ID of the invitation to cancel"),
@@ -260,9 +254,7 @@ export const cancelInvitationTool = defineTmsTool({
 
 export const updateMemberRoleTool = defineTmsTool({
   name: "updateMemberRole",
-  description: "Update an existing team member's role or suspend/reinstate their workspace access. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Modifying member roles affects workspace permissions.",
+  description: "Update an existing team member's role or suspend/reinstate their workspace access.",
   requiredPermissions: ["users.change_role"],
   inputSchema: z.object({
     memberId: z.string().describe("ID of the workspace member"),
@@ -325,9 +317,7 @@ export const updateMemberRoleTool = defineTmsTool({
 
 export const removeMemberTool = defineTmsTool({
   name: "removeMember",
-  description: "Remove a member from the workspace with safe cascading cleanup. Requires dispatcher confirmation.",
-  requiresApproval: true,
-  approvalReason: "Removing a member revokes their workspace membership and detaches assigned driver records.",
+  description: "Remove a member from the workspace with safe cascading cleanup.",
   requiredPermissions: ["users.remove"],
   inputSchema: z.object({
     memberId: z.string().describe("ID of the workspace member to remove"),
