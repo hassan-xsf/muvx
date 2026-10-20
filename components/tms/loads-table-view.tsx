@@ -25,6 +25,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { StatusBadge } from "@/components/status-badge"
+import { DeleteLoadDialog } from "./delete-load-dialog"
 
 export interface LoadRecord {
   id: string
@@ -281,6 +282,11 @@ export function LoadsTableView({ loads }: LoadsTableViewProps) {
                       >
                         <ArrowUpRight className="size-3.5" />
                       </Link>
+                      <DeleteLoadDialog
+                        loadId={l.id}
+                        loadNumber={l.loadNumber}
+                        redirectOnDelete={false}
+                      />
                     </div>
                   </TableCell>
                 </TableRow>

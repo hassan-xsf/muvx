@@ -6,6 +6,7 @@ import {
   queryLoadsTool,
   updateLoadTool,
   updateLoadDocsTool,
+  deleteLoadTool,
 } from "./loads"
 
 // Trips & Dispatch domain
@@ -105,6 +106,7 @@ export const ALL_TMS_TOOLS: TmsToolDef<any, any>[] = [
   queryLoadsTool,
   updateLoadTool,
   updateLoadDocsTool,
+  deleteLoadTool,
 
   // 2. Trips & Dispatch
   dispatchTripTool,

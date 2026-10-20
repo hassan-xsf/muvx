@@ -1,8 +1,8 @@
 import { z } from "zod"
 import { randomUUID } from "node:crypto"
-import { eq, and, desc, like } from "drizzle-orm"
+import { eq, and, or, desc, like } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { load } from "@/lib/schema"
+import { load, trip, invoice } from "@/lib/schema"
 import { recordAuditEvent } from "@/lib/audit"
 import { dispatchNotificationEvent } from "@/lib/notifications"
 import { defineTmsTool, hasPermission, permissionDeniedResult } from "../types"
@@ -270,3 +270,63 @@ export const updateLoadDocsTool = defineTmsTool({
     }
   },
 })
+
+export const deleteLoadTool = defineTmsTool({
+  name: "deleteLoad",
+  description: "Permanently delete a freight load from Muvx TMS by its load ID or load number.",
+  requiredPermissions: ["loads.delete"],
+  inputSchema: z.object({
+    loadIdentifier: z.string().describe("Load ID (UUID) or Load Number (e.g. LD-102948) to delete"),
+    reason: z.string().optional().describe("Optional reason for deleting the load"),
+  }),
+  execute: async ({ loadIdentifier, reason }, ctx) => {
+    if (!hasPermission(ctx, ["loads.delete", "loads.edit"])) {
+      return permissionDeniedResult(["loads.delete"])
+    }
+
+    const [existing] = await db
+      .select()
+      .from(load)
+      .where(
+        and(
+          eq(load.tenantId, ctx.tenantId),
+          or(eq(load.id, loadIdentifier), eq(load.loadNumber, loadIdentifier))
+        )
+      )
+      .limit(1)
+
+    if (!existing) {
+      return { success: false, error: `Load "${loadIdentifier}" not found.` }
+    }
+
+    // Detach references in trips and invoices
+    await db
+      .update(trip)
+      .set({ loadId: null })
+      .where(and(eq(trip.loadId, existing.id), eq(trip.tenantId, ctx.tenantId)))
+
+    await db
+      .update(invoice)
+      .set({ loadId: null })
+      .where(and(eq(invoice.loadId, existing.id), eq(invoice.tenantId, ctx.tenantId)))
+
+    await db
+      .delete(load)
+      .where(and(eq(load.id, existing.id), eq(load.tenantId, ctx.tenantId)))
+
+    await recordAuditEvent({
+      actor: { id: ctx.userId, email: ctx.userEmail },
+      action: "load.delete",
+      target: { type: "load", id: existing.id, label: existing.loadNumber },
+      metadata: { reason: reason || "Deleted by Copilot", tenantId: ctx.tenantId },
+    })
+
+    return {
+      success: true,
+      loadId: existing.id,
+      loadNumber: existing.loadNumber,
+      message: `Load #${existing.loadNumber} deleted successfully.`,
+    }
+  },
+})
+

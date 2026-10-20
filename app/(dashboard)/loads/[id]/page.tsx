@@ -39,6 +39,8 @@ import { DispatchLoadDialog } from "@/components/tms/dispatch-load-dialog"
 import { LoadStatusStepper } from "@/components/tms/load-status-stepper"
 import { GenerateInvoiceDialog } from "@/components/tms/generate-invoice-dialog"
 import { RecordExpenseDialog } from "@/components/tms/record-expense-dialog"
+import { EditLoadDialog } from "@/components/tms/edit-load-dialog"
+import { DeleteLoadDialog } from "@/components/tms/delete-load-dialog"
 import type { LoadStop } from "@/lib/tms-tax"
 
 export const instant = false
@@ -80,6 +82,8 @@ export default async function LoadDetailPage({
   const canDispatch = perms.has("loads.dispatch") && load.status === "available"
   const canUpdateStatus = perms.has("loads.update_status")
   const canInvoice = perms.has("billing.create") && load.status === "delivered"
+  const canEdit = perms.has("loads.edit") || perms.has("loads.module")
+  const canDelete = perms.has("loads.delete") || perms.has("loads.edit")
 
   const isDispatched =
     load.status === "dispatched" ||
@@ -156,6 +160,18 @@ export default async function LoadDetailPage({
             <FileText className="size-3.5 text-brand-muted-soft" />
             Rate Con
           </Link>
+
+          {/* Edit Load Button */}
+          {canEdit && <EditLoadDialog load={load} />}
+
+          {/* Delete Load Button */}
+          {canDelete && (
+            <DeleteLoadDialog
+              loadId={load.id}
+              loadNumber={load.loadNumber}
+              redirectOnDelete={true}
+            />
+          )}
 
           {/* Quick Expense Logging on active trip */}
           {load.trip && (

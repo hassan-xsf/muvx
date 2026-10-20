@@ -42,7 +42,7 @@ export type ParseOutcome =
   | { ok: true; data: RateConfExtraction; raw?: string }
   | { ok: false; rateLimited: boolean; message: string }
 
-const MODEL = "gemini-2.5-flash"
+const MODEL = "gemini-3.8-flash"
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`
 
 const PROMPT = `You are an expert transportation dispatcher reading a freight Rate Confirmation document.
