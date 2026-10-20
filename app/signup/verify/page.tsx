@@ -54,7 +54,7 @@ export default function VerifySignupPage() {
         return
       }
 
-      // Get the signup data (name + password) and any ?next= forwarded
+      // Get the signup data (email) and any ?next= forwarded
       // from the signup page. If the user came in via an invite link,
       // signup_next points back at /invite/[id] and we honor it after
       // the account exists instead of dropping them on /onboarding.
@@ -63,23 +63,8 @@ export default function VerifySignupPage() {
       localStorage.removeItem("signup_data")
       localStorage.removeItem("signup_next")
 
+      // Account was already created on /signup; the OTP only verifies it.
       if (signupData) {
-        const { name, password } = JSON.parse(signupData)
-
-        // Now create the user with email + password using sign-up endpoint
-        // (email was already verified by OTP above)
-        const signUpResult = await authClient.signUp.email({
-          email,
-          password,
-          name,
-        })
-
-        if (signUpResult.error) {
-          setError(signUpResult.error.message || "Failed to create account")
-          setLoading(false)
-          return
-        }
-
         // Honor the deep link if present and safe (same-origin path).
         // Falls back to /onboarding when no ?next= was forwarded.
         const destination =

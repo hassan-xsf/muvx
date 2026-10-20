@@ -257,7 +257,12 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: false,
+    // No session until the signup OTP is verified (blocks skipping /signup/verify).
+    requireEmailVerification: true,
+  },
+
+  emailVerification: {
+    autoSignInAfterVerification: true,
   },
 
   socialProviders: {

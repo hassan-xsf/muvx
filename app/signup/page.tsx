@@ -94,6 +94,15 @@ function SignupContent() {
         }
       }
 
+      // Create the account first: Better Auth silently skips sending
+      // verification OTPs to emails with no account.
+      const signUpResult = await authClient.signUp.email({ email, password, name })
+      if (signUpResult.error) {
+        setError(signUpResult.error.message || "Failed to create account")
+        setLoading(false)
+        return
+      }
+
       const result = await authClient.emailOtp.sendVerificationOtp({
         email,
         type: "email-verification",
@@ -109,7 +118,7 @@ function SignupContent() {
       // route and we can't pass state across it cleanly.
       localStorage.setItem(
         "signup_data",
-        JSON.stringify({ email, name, password }),
+        JSON.stringify({ email }),
       )
       if (nextPath) {
         localStorage.setItem("signup_next", nextPath)
