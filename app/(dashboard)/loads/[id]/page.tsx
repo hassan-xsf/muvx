@@ -27,6 +27,7 @@ import {
   getTrucksForOrg,
   getTrailersForOrg,
   getCarriersForOrg,
+  getInvoiceByLoadId,
 } from "@/lib/dal"
 import { getEffectivePermissions } from "@/lib/can"
 import { formatWorkspaceDate } from "@/lib/timezone"
@@ -53,7 +54,7 @@ export default async function LoadDetailPage({
   if (!tenantId) redirect("/onboarding")
 
   const { id } = await params
-  const [load, profile, perms, drivers, trucks, trailers, carriers] = await Promise.all([
+  const [load, profile, perms, drivers, trucks, trailers, carriers, linkedInvoice] = await Promise.all([
     getLoadWithTripDetails(id, tenantId),
     getWorkspaceProfile(tenantId),
     getEffectivePermissions(session.user.id, tenantId),
@@ -61,6 +62,7 @@ export default async function LoadDetailPage({
     getTrucksForOrg(tenantId),
     getTrailersForOrg(tenantId),
     getCarriersForOrg(tenantId),
+    getInvoiceByLoadId(id, tenantId),
   ])
 
   if (!load) notFound()
@@ -190,32 +192,43 @@ export default async function LoadDetailPage({
             />
           )}
 
-          {/* Quick Invoice Dialog when Delivered */}
-          {canInvoice && (
-            <GenerateInvoiceDialog
-              deliveredLoads={[
-                {
-                  id: load.id,
-                  loadNumber: load.loadNumber,
-                  customerName: load.customerName,
-                  rate: load.rate,
-                  originCity: load.originCity,
-                  originState: load.originState,
-                  destCity: load.destCity,
-                  destState: load.destState,
-                },
-              ]}
-              preselectedLoadId={load.id}
-            />
+          {/* Quick Invoice Dialog when Delivered or View Invoice if generated */}
+          {linkedInvoice ? (
+            <Link
+              href={`/invoices/${linkedInvoice.id}`}
+              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full border border-emerald-300 bg-emerald-50 text-xs font-medium text-emerald-900 hover:bg-emerald-100 transition-colors shadow-2xs"
+            >
+              <FileText className="size-3.5 text-emerald-700" />
+              Invoice {linkedInvoice.invoiceNumber}
+              <ArrowUpRight className="size-3 text-emerald-700" />
+            </Link>
+          ) : (
+            canInvoice && (
+              <GenerateInvoiceDialog
+                deliveredLoads={[
+                  {
+                    id: load.id,
+                    loadNumber: load.loadNumber,
+                    customerName: load.customerName,
+                    rate: load.rate,
+                    originCity: load.originCity,
+                    originState: load.originState,
+                    destCity: load.destCity,
+                    destState: load.destState,
+                  },
+                ]}
+                preselectedLoadId={load.id}
+              />
+            )
           )}
 
           {isDispatched && (
             <Link
-              href="/trips"
+              href={load.trip?.id ? `/trips/${load.trip.id}` : "/trips"}
               className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full border border-brand-rule text-xs font-medium text-brand-ink hover:bg-brand-cream-soft transition-colors shadow-2xs"
             >
               <Navigation className="size-3.5 text-[#d9622b]" />
-              Track in Trips
+              {load.trip ? `Trip ${load.trip.tripNumber}` : "Track in Trips"}
               <ArrowUpRight className="size-3 text-brand-muted-soft" />
             </Link>
           )}

@@ -764,6 +764,21 @@ export const getInvoiceById = async (invoiceId: string, tenantId: string) => {
   return result ?? null
 }
 
+export const getInvoiceByLoadId = async (loadId: string, tenantId: string) => {
+  const [result] = await db
+    .select({
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      amount: invoice.amount,
+      status: invoice.status,
+    })
+    .from(invoice)
+    .where(and(eq(invoice.loadId, loadId), eq(invoice.tenantId, tenantId)))
+    .limit(1)
+  return result ?? null
+}
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PAYROLL
 // ─────────────────────────────────────────────────────────────────────────────

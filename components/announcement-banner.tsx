@@ -49,10 +49,10 @@ const KIND_META: Record<Announcement["kind"], { icon: LucideIcon; cls: string }>
 
 const DISMISS_KEY = "muvx:dismissed_announcements"
 
-// --- sessionStorage-backed dismissed-announcements store ---
+// --- localStorage-backed dismissed-announcements store ---
 // Uses useSyncExternalStore so the server-rendered HTML and the
 // client's initial hydration render both see an empty Set. After
-// hydration the hook switches to reading sessionStorage; if that
+// hydration the hook switches to reading localStorage; if that
 // differs it re-renders naturally — never a hydration mismatch.
 
 const DISMISSED_CHANGED = "muvx:dismissed-changed"
@@ -68,7 +68,7 @@ let cachedSet: Set<string> | null = null
 function readDismissed(): Set<string> {
   if (typeof window === "undefined") return EMPTY_SET
   try {
-    const raw = sessionStorage.getItem(DISMISS_KEY)
+    const raw = localStorage.getItem(DISMISS_KEY)
     if (raw === cachedRaw && cachedSet) return cachedSet
     cachedRaw = raw
     cachedSet = new Set<string>(JSON.parse(raw ?? "[]"))
@@ -81,17 +81,28 @@ function readDismissed(): Set<string> {
 }
 
 function writeDismissed(next: Set<string>): void {
-  const raw = JSON.stringify([...next])
-  sessionStorage.setItem(DISMISS_KEY, raw)
-  cachedRaw = raw
-  cachedSet = next
+  try {
+    const raw = JSON.stringify([...next])
+    localStorage.setItem(DISMISS_KEY, raw)
+    cachedRaw = raw
+    cachedSet = next
+  } catch {}
   // Notify same-tab listeners so useSyncExternalStore re-reads.
   window.dispatchEvent(new CustomEvent(DISMISSED_CHANGED))
 }
 
 function subscribeDismissed(onChange: () => void): () => void {
-  window.addEventListener(DISMISSED_CHANGED, onChange)
-  return () => window.removeEventListener(DISMISSED_CHANGED, onChange)
+  const handler = () => {
+    cachedRaw = null
+    cachedSet = null
+    onChange()
+  }
+  window.addEventListener(DISMISSED_CHANGED, handler)
+  window.addEventListener("storage", handler)
+  return () => {
+    window.removeEventListener(DISMISSED_CHANGED, handler)
+    window.removeEventListener("storage", handler)
+  }
 }
 
 export function AnnouncementBanner({
@@ -165,13 +176,13 @@ export function AnnouncementBanner({
                 </Link>
               )}
             </div>
-            {a.dismissible && (
+            {a.dismissible !== false && (
               <button
                 onClick={() => dismiss(a.id)}
-                className="rounded p-0.5 opacity-70 hover:bg-black/5 hover:opacity-100"
+                className="rounded p-0.5 opacity-70 hover:bg-black/5 hover:opacity-100 transition-opacity"
                 aria-label="Dismiss"
               >
-                <X className="size-3" />
+                <X className="size-3.5" />
               </button>
             )}
           </div>

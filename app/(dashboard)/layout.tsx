@@ -155,15 +155,17 @@ export default async function DashboardLayout({
           session={sidebarSession}
           isImpersonating={!!impersonatedBy}
         />
-        <SidebarInset className="bg-background min-w-0 overflow-x-hidden">
-          <SiteHeader
-            userName={session.user.name ?? "User"}
-            userEmail={session.user.email}
-            userImage={session.user.image ?? null}
-            isImpersonating={!!impersonatedBy}
-          />
-          <AnnouncementBanner initial={activeAnnouncements} />
-          <main className="flex-1 min-w-0 overflow-y-auto">{children}</main>
+        <SidebarInset className="bg-background min-w-0 overflow-x-hidden print:overflow-visible print:bg-white print:m-0 print:p-0">
+          <div className="print:hidden">
+            <SiteHeader
+              userName={session.user.name ?? "User"}
+              userEmail={session.user.email}
+              userImage={session.user.image ?? null}
+              isImpersonating={!!impersonatedBy}
+            />
+            <AnnouncementBanner initial={activeAnnouncements} />
+          </div>
+          <main className="flex-1 min-w-0 overflow-y-auto print:overflow-visible print:p-0">{children}</main>
         </SidebarInset>
       </PermissionsBootstrap>
     </SidebarProvider>

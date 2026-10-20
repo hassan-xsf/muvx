@@ -257,14 +257,31 @@ export function LoadsTableView({ loads }: LoadsTableViewProps) {
                     )}
                   </TableCell>
 
-                  {/* Open details arrow */}
+                  {/* Actions: RC, BOL, Open details */}
                   <TableCell className="px-3 py-3 text-right">
-                    <Link
-                      href={`/loads/${l.id}`}
-                      className="text-[#8a8b8f] hover:text-[#16181d] dark:hover:text-zinc-100 transition-colors inline-flex items-center"
-                    >
-                      <ArrowUpRight className="size-3.5" />
-                    </Link>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <Link
+                        href={`/loads/${l.id}/rate-con`}
+                        title="Rate Confirmation"
+                        className="px-2 py-0.5 rounded border border-[#d1ccc5] text-[10px] font-mono text-[#16181d] hover:bg-[#f7f3ec] dark:border-zinc-700 dark:text-zinc-300 transition-colors"
+                      >
+                        RC
+                      </Link>
+                      <Link
+                        href={`/loads/${l.id}/bol`}
+                        title="Bill of Lading"
+                        className="px-2 py-0.5 rounded border border-[#d1ccc5] text-[10px] font-mono text-[#16181d] hover:bg-[#f7f3ec] dark:border-zinc-700 dark:text-zinc-300 transition-colors"
+                      >
+                        BOL
+                      </Link>
+                      <Link
+                        href={`/loads/${l.id}`}
+                        className="p-1 text-[#8a8b8f] hover:text-[#16181d] dark:hover:text-zinc-100 transition-colors inline-flex items-center"
+                        title="View Load"
+                      >
+                        <ArrowUpRight className="size-3.5" />
+                      </Link>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))

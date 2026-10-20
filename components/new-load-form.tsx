@@ -33,6 +33,7 @@ import {
   computeTaxAndFinalRate,
 } from "@/lib/tms-tax"
 import { RateConUploader } from "@/components/tms/rate-con-uploader"
+import { AddressAutocompleteInput } from "@/components/tms/address-autocomplete-input"
 import type { RateConfExtraction } from "@/lib/rate-conf-parser"
 
 // ─── Equipment Types matching Onboarding Card Selection ───
@@ -866,14 +867,20 @@ export function NewLoadForm() {
 
               <div>
                 <label htmlFor="originAddress" className="field-label">
-                  Street Address
+                  Street Address (Google Places / Autocomplete)
                 </label>
-                <input
+                <AddressAutocompleteInput
                   id="originAddress"
                   value={originAddress}
-                  onChange={(e) => setOriginAddress(e.target.value)}
+                  onChange={setOriginAddress}
+                  onSelectAddress={(data) => {
+                    setOriginAddress(data.address)
+                    if (data.city) setOriginCity(data.city)
+                    if (data.state) setOriginState(data.state)
+                    if (data.zip) setOriginZip(data.zip)
+                    if (data.country) setOriginCountry(data.country)
+                  }}
                   placeholder="e.g. 1500 Logistics Parkway"
-                  className="input-base"
                 />
               </div>
 
@@ -1040,14 +1047,20 @@ export function NewLoadForm() {
 
               <div>
                 <label htmlFor="destAddress" className="field-label">
-                  Street Address
+                  Street Address (Google Places / Autocomplete)
                 </label>
-                <input
+                <AddressAutocompleteInput
                   id="destAddress"
                   value={destAddress}
-                  onChange={(e) => setDestAddress(e.target.value)}
+                  onChange={setDestAddress}
+                  onSelectAddress={(data) => {
+                    setDestAddress(data.address)
+                    if (data.city) setDestCity(data.city)
+                    if (data.state) setDestState(data.state)
+                    if (data.zip) setDestZip(data.zip)
+                    if (data.country) setDestCountry(data.country)
+                  }}
                   placeholder="e.g. 8400 Horizon Boulevard"
-                  className="input-base"
                 />
               </div>
 

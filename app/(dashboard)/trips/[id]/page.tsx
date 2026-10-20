@@ -152,13 +152,29 @@ export default async function TripDetailPage({ params }: PageProps) {
           />
 
           {trip.loadId && (
-            <Link
-              href={`/loads/${trip.loadId}`}
-              className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-brand-ink text-brand-cream text-xs font-medium hover:bg-brand-ink/90 transition-colors shadow-xs"
-            >
-              <Truck className="size-3.5 text-[#d9622b]" />
-              Open Load Manifest
-            </Link>
+            <>
+              <Link
+                href={`/loads/${trip.loadId}`}
+                className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-brand-ink text-brand-cream text-xs font-medium hover:bg-brand-ink/90 transition-colors shadow-xs"
+              >
+                <Truck className="size-3.5 text-[#d9622b]" />
+                Open Load Manifest
+              </Link>
+              <Link
+                href={`/loads/${trip.loadId}/bol`}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full border border-brand-rule text-xs font-medium text-brand-ink hover:bg-brand-cream transition-colors"
+              >
+                <FileText className="size-3.5 text-brand-muted-soft" />
+                BOL
+              </Link>
+              <Link
+                href={`/loads/${trip.loadId}/rate-con`}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full border border-brand-rule text-xs font-medium text-brand-ink hover:bg-brand-cream transition-colors"
+              >
+                <Receipt className="size-3.5 text-brand-muted-soft" />
+                Rate Con
+              </Link>
+            </>
           )}
         </div>
       </div>

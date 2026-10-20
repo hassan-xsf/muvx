@@ -744,3 +744,64 @@
 .animate-pulse-soft {
   animation: copilot-pulse-soft 2.4s ease-in-out infinite;
 }
+
+/* ─── PROFESSIONAL DOCUMENT PRINTING RULES ─── */
+@media print {
+  /* Hide all app chrome, sidebars, headers, banners, navigation, and floating widgets */
+  [data-slot="sidebar"],
+  [data-sidebar="sidebar"],
+  [data-slot="sidebar-gap"],
+  aside,
+  header,
+  nav,
+  .print\:hidden,
+  [data-slot="site-header"],
+  .site-header,
+  #site-header {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    font-size: 11pt !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  [data-slot="sidebar-inset"],
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .print-document-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+
+  @page {
+    size: letter portrait;
+    margin: 10mm 12mm 10mm 12mm;
+  }
+}

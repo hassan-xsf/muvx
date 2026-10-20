@@ -30,8 +30,9 @@ jobs:
             echo "🚀 Starting Muvx TMS deployment..."
             cd /home/ubuntu/muvx
             
-            echo "📥 Pulling latest changes from GitHub..."
-            git pull origin main
+            echo "📥 Syncing latest changes from GitHub origin/main..."
+            git fetch origin main
+            git reset --hard origin/main
             
             echo "📦 Installing dependencies..."
             bun install

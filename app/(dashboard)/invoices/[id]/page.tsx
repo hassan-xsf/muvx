@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
-import { ChevronLeft, FileText, CheckCircle2, Clock } from "lucide-react"
+import { ChevronLeft, FileText, CheckCircle2, Clock, Truck, Printer } from "lucide-react"
 import { getSession, getInvoiceById, getWorkspaceProfile } from "@/lib/dal"
 import { formatWorkspaceDate } from "@/lib/timezone"
 import { Card } from "@/components/ui/card"
@@ -39,7 +39,32 @@ export default async function InvoiceDetailPage({
           <ChevronLeft className="size-3.5" />
           Back to invoices
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {inv.loadId && (
+            <>
+              <Link
+                href={`/loads/${inv.loadId}`}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full border border-brand-rule text-xs font-medium text-brand-ink hover:bg-brand-cream-soft transition-colors"
+              >
+                <Truck className="size-3.5 text-[#d9622b]" />
+                View Load
+              </Link>
+              <Link
+                href={`/loads/${inv.loadId}/bol`}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full border border-brand-rule text-xs font-medium text-brand-ink hover:bg-brand-cream-soft transition-colors"
+              >
+                <Printer className="size-3.5 text-brand-muted-soft" />
+                BOL
+              </Link>
+              <Link
+                href={`/loads/${inv.loadId}/rate-con`}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full border border-brand-rule text-xs font-medium text-brand-ink hover:bg-brand-cream-soft transition-colors"
+              >
+                <FileText className="size-3.5 text-brand-muted-soft" />
+                Rate Con
+              </Link>
+            </>
+          )}
           {inv.status !== "paid" && (
             <ApplyPaymentDialog
               invoiceId={inv.id}
@@ -53,7 +78,7 @@ export default async function InvoiceDetailPage({
       </div>
 
       {/* Invoice Document Canvas */}
-      <Card className="border-brand-rule bg-brand-card p-8 sm:p-12 shadow-sm space-y-8">
+      <Card className="print-document-container border-brand-rule bg-brand-card p-8 sm:p-12 shadow-sm space-y-8 print:border-0 print:shadow-none print:p-0">
         {/* Top Header */}
         <div className="flex items-start justify-between border-b border-brand-rule pb-8">
           <div>
@@ -114,7 +139,16 @@ export default async function InvoiceDetailPage({
               {inv.loadNumber && (
                 <div>
                   <span className="text-brand-muted-soft">Load #: </span>
-                  <span className="font-mono font-semibold text-brand-ink">{inv.loadNumber}</span>
+                  {inv.loadId ? (
+                    <Link
+                      href={`/loads/${inv.loadId}`}
+                      className="font-mono font-semibold text-[#d9622b] hover:underline"
+                    >
+                      {inv.loadNumber} →
+                    </Link>
+                  ) : (
+                    <span className="font-mono font-semibold text-brand-ink">{inv.loadNumber}</span>
+                  )}
                 </div>
               )}
               {inv.commodity && (
