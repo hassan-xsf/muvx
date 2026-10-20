@@ -38,16 +38,14 @@ import {
   Copy,
   ExternalLink,
   Loader2,
+  PencilLine,
   RefreshCw,
   Share2,
   ThumbsDown,
   ThumbsUp,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import {
-  ToolPartList,
-  describeTool,
-} from "./parts/tool-part"
+import { ToolPartList, describeTool } from "./parts/tool-part"
 import { FilePartList } from "./parts/file-part"
 import { ReasoningPart } from "./parts/reasoning-part"
 import { DataTable, parseMarkdownTable } from "./parts/data-table"
@@ -436,6 +434,9 @@ function ThinkingRun({
 }) {
   const [open, setOpen] = useState(true)
   const title = deriveThinkingRunTitle(segments, active)
+  const elapsed = useElapsedTimer(active)
+  const runTools = segments.flatMap((s) => (s.kind === "tools" ? s.tools : []))
+  const doneTools = runTools.filter((t) => !isActiveToolState(t.state)).length
   const hasVisibleReasoning = segments.some(
     (s) =>
       s.kind === "reasoning" &&
@@ -474,6 +475,21 @@ function ThinkingRun({
             )}
           >
             {title.detail}
+          </span>
+        )}
+        {/* Live progress: steps finished so far, and how long the run has
+            been going. Both only while active — a finished run's title
+            already says "Finished N steps". The total is deliberately not
+            shown: tool calls arrive as the model makes them, so there is no
+            denominator until the run ends. */}
+        {active && doneTools > 0 && (
+          <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-brand-muted-soft/60">
+            {doneTools} done
+          </span>
+        )}
+        {active && elapsed > 0 && (
+          <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-brand-muted-soft/60">
+            {elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`}
           </span>
         )}
         <ChevronRight
@@ -593,6 +609,76 @@ function buildSegments(parts: StreamPart[]): RenderSegment[] {
 // ---------------------------------------------------------------------------
 // Warning / error banners
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// WorkingSetHeader — "records this turn changed" pill row.
+//
+// Reads the RESULT, not the args: every write tool in lib/copilot/tools
+// returns `{ success: true, <entity>Number | name, ... }`, so a pill only
+// appears once the write actually landed. Read-only turns render nothing,
+// which keeps ordinary Q&A answers clean.
+// ---------------------------------------------------------------------------
+const WRITE_TOOL = /^(book|draft|create|update|dispatch|delete|invite|remove|send|assign|record)/i
+
+/** Human label for a record a write tool just touched. */
+function touchedRecordLabel(tool: ToolCallEvent): string | undefined {
+  if (tool.state !== "output-available") return undefined
+  if (!WRITE_TOOL.test(tool.toolName)) return undefined
+  const r = tool.result
+  if (!r || typeof r !== "object") return undefined
+  const obj = r as Record<string, unknown>
+  if (obj.success === false) return undefined
+  // Order matters: a trip/invoice result also carries the loadNumber it
+  // references, so probe the most specific key first or the pill names the
+  // wrong record.
+  for (const key of [
+    "tripNumber",
+    "invoiceNumber",
+    "expenseNumber",
+    "unitNumber",
+    "loadNumber",
+    "name",
+    "email",
+  ]) {
+    const v = obj[key]
+    if (typeof v === "string" && v.trim()) return v
+  }
+  return undefined
+}
+
+function WorkingSetHeader({ tools }: { tools: ToolCallEvent[] }) {
+  const touched = useMemo(() => {
+    const seen = new Set<string>()
+    for (const t of tools) {
+      const label = touchedRecordLabel(t)
+      if (label) seen.add(label)
+    }
+    return [...seen]
+  }, [tools])
+
+  if (!touched.length) return null
+
+  return (
+    <div className="mb-2 flex flex-wrap items-center gap-1.5 rounded-lg border border-brand-rule-soft bg-brand-card/70 px-2 py-1.5 text-[11px] text-brand-muted">
+      <span className="mr-1 font-medium text-brand-ink/80">
+        Changed {touched.length} {touched.length === 1 ? "record" : "records"}
+      </span>
+      {touched.slice(0, 6).map((label) => (
+        <span
+          key={label}
+          title={label}
+          className="inline-flex items-center gap-1 rounded border border-brand-accent/35 bg-brand-accent/10 px-1.5 py-0.5 font-mono text-[10.5px] text-brand-accent"
+        >
+          <PencilLine className="size-2.5" />
+          <span className="max-w-40 truncate">{label}</span>
+        </span>
+      ))}
+      {touched.length > 6 && (
+        <span className="text-brand-muted-soft/70">+{touched.length - 6} more</span>
+      )}
+    </div>
+  )
+}
+
 function WarningBanner({ ev }: { ev: WarningEvent }) {
   return (
     <div className="my-1 flex items-start gap-2 rounded-md border border-amber-300/40 bg-amber-50/40 px-3 py-2 text-[12px] text-amber-800">
@@ -714,12 +800,13 @@ export function StreamingAssistantMessage({
   }, [segments])
 
   const showWorking = isStreamingThis && segments.length === 0
-  const activeToolEvent = useMemo(
-    () =>
-      segments
-        .flatMap((s) => (s.kind === "tools" ? s.tools : []))
-        .find((t) => isActiveToolState(t.state)),
+  const allTools = useMemo(
+    () => segments.flatMap((s) => (s.kind === "tools" ? s.tools : [])),
     [segments],
+  )
+  const activeToolEvent = useMemo(
+    () => allTools.find((t) => isActiveToolState(t.state)),
+    [allTools],
   )
 
   return (
@@ -728,6 +815,8 @@ export function StreamingAssistantMessage({
       data-chat-streaming={isStreamingThis ? "true" : undefined}
     >
       {showWorking && <WorkingIndicator tool={activeToolEvent} />}
+
+      <WorkingSetHeader tools={allTools} />
 
       <div className="space-y-2">
         {renderGroups.map((seg, i) => {

@@ -12,10 +12,11 @@
  *   - VS Code-style active pulse + relative rail in ToolPartList
  */
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   Check,
+  Loader2,
   X,
   ChevronRight,
   Circle,
@@ -158,6 +159,54 @@ const ACTIVE_TOOL_STATES = [
 function isActiveToolState(state: ToolCallState | string) {
   return ACTIVE_TOOL_STATES.includes(state as (typeof ACTIVE_TOOL_STATES)[number])
 }
+
+/**
+ * How long this step has been running, in whole seconds. Ticks while the
+ * tool is active, then freezes at the final duration so a finished row
+ * still says how long it took. The clock starts the first time we see the
+ * row active, so replayed/persisted history (never active) shows nothing.
+ */
+function useStepDuration(active: boolean): number | undefined {
+  const startRef = useRef<number | null>(null)
+  const [secs, setSecs] = useState<number | undefined>(undefined)
+
+  useEffect(() => {
+    if (!active) return
+    if (startRef.current === null) startRef.current = Date.now()
+    const tick = () =>
+      setSecs(Math.floor((Date.now() - (startRef.current ?? Date.now())) / 1000))
+    tick()
+    const id = setInterval(tick, 500)
+    return () => {
+      clearInterval(id)
+      // Freeze at the real elapsed time (min 1s so fast tools don't read "0s").
+      if (startRef.current !== null) {
+        setSecs(Math.max(1, Math.round((Date.now() - startRef.current) / 1000)))
+      }
+    }
+  }, [active])
+
+  return secs
+}
+
+function formatDuration(s: number): string {
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`
+}
+
+/**
+ * Count of rows a tool came back with, for the ", 12 results" suffix.
+ * Looks at the array itself or the usual envelope keys our TMS tools use.
+ */
+function resultCount(result: unknown): number | undefined {
+  if (Array.isArray(result)) return result.length
+  if (result && typeof result === "object") {
+    for (const key of ["results", "items", "rows", "matches", "data", "loads", "drivers"]) {
+      const v = (result as Record<string, unknown>)[key]
+      if (Array.isArray(v)) return v.length
+    }
+  }
+  return undefined
+}
 /** True while the operator still owes us a decision. */
 function isAwaitingApproval(tool: ToolCallEvent): boolean {
   return tool.state === "approval-requested"
@@ -273,6 +322,8 @@ function ApprovalCard({
   )
 }
 function ActivePulseDot() {
+  // The ping ring and the dot are the same size and both absolutely centred,
+  // so the ring expands around the dot rather than nudging it off-centre.
   return (
     <span className="relative flex size-2 items-center justify-center">
       <span className="absolute inset-0 rounded-full bg-brand-accent/25 animate-ping" />
@@ -455,11 +506,18 @@ function ToolIcon({
 }) {
   const error = state === "output-error"
 
-  // VS Code pattern: no spinner for active tools — the label shimmers
-  // via CSS animation handled by the parent. Static icon so the row's
-  // left position never shifts on state transitions.
+  // Every icon is size-3.5 in the same 4-unit slot, so swapping between
+  // spinner / tool glyph / check never shifts the row's left edge.
   if (error) {
     return <AlertCircle className={cn("size-3.5 text-rose-600", className)} />
+  }
+  if (isActiveToolState(state)) {
+    return (
+      <Loader2 className={cn("size-3.5 animate-spin text-brand-accent", className)} />
+    )
+  }
+  if (state === "output-available") {
+    return <Check className={cn("size-3.5 text-brand-success", className)} />
   }
   const Icon = TOOL_ICONS[toolName] ?? Wrench
   return <Icon className={cn("size-3.5 text-brand-muted-soft", className)} />
@@ -471,6 +529,64 @@ function formatJson(v: unknown): string {
   } catch {
     return String(v)
   }
+}
+
+/**
+ * TruncatedBlock — long monospace payload capped with a fade instead of a
+ * scroll box, plus a "Show N more lines" pill. A nested scroller inside a
+ * chat transcript steals the page's wheel events; a fade doesn't.
+ */
+function TruncatedBlock({
+  text,
+  collapsedLines = 12,
+  label = "lines",
+  tone = "default",
+}: {
+  text: string
+  collapsedLines?: number
+  label?: string
+  tone?: "default" | "error"
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const total = useMemo(() => text.split("\n").length, [text])
+  const overflow = total > collapsedLines
+  const hidden = overflow ? total - collapsedLines : 0
+
+  return (
+    <div className="relative">
+      <div
+        className={cn(
+          "overflow-hidden transition-[max-height] duration-200",
+          overflow &&
+            !expanded &&
+            "max-h-52 mask-[linear-gradient(to_bottom,#000_calc(100%-36px),transparent)]",
+        )}
+      >
+        <pre
+          className={cn(
+            "overflow-x-auto whitespace-pre-wrap break-all rounded-md border px-2.5 py-1.5 font-mono text-[11.5px] leading-relaxed",
+            tone === "error"
+              ? "border-rose-300/40 bg-rose-50/50 text-rose-700"
+              : "border-brand-rule/50 bg-brand-cream-soft text-brand-muted",
+          )}
+        >
+          {text}
+        </pre>
+      </div>
+      {overflow && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            setExpanded((v) => !v)
+          }}
+          className="mt-1 inline-flex items-center gap-1 rounded-md border border-brand-rule bg-brand-cream-soft px-1.5 py-0.5 text-[10.5px] font-medium text-brand-muted transition-colors hover:border-brand-accent/40 hover:text-brand-ink"
+        >
+          {expanded ? "Show less" : `Show ${hidden} more ${label}`}
+        </button>
+      )}
+    </div>
+  )
 }
 
 export function ToolPart({
@@ -488,6 +604,8 @@ export function ToolPart({
   const awaiting = isAwaitingApproval(tool)
 
   const label = describeTool(tool.toolName, tool.args)
+  const duration = useStepDuration(isPending)
+  const count = isPending ? undefined : resultCount(tool.result)
 
   // Pull a short mono "target" out of args.
   const a = tool.args ?? {}
@@ -537,6 +655,11 @@ export function ToolPart({
               )}
             >
               {label}
+              {count != null && (
+                <span className="text-brand-muted-soft/75">
+                  , {count} {count === 1 ? "result" : "results"}
+                </span>
+              )}
             </span>
             {targetShort && (
               <span className="min-w-0 truncate font-mono text-[11px] text-brand-muted-soft/60">
@@ -548,10 +671,16 @@ export function ToolPart({
                 Awaiting approval
               </span>
             )}
+            {duration != null && !awaiting && (
+              <span className="ml-auto shrink-0 font-mono text-[10px] tabular-nums text-brand-muted-soft/55">
+                {formatDuration(duration)}
+              </span>
+            )}
             {hasDetails && (
               <ChevronRight
                 className={cn(
-                  "ml-auto size-3 shrink-0 text-brand-muted-soft/55 transition-transform",
+                  "size-3 shrink-0 text-brand-muted-soft/55 transition-transform",
+                  duration == null || awaiting ? "ml-auto" : "ml-1",
                   (open || awaiting) && "rotate-90",
                 )}
               />
@@ -577,9 +706,9 @@ export function ToolPart({
                 <div className="text-[10px] font-medium uppercase tracking-wide text-brand-muted-soft/65">
                   Input
                 </div>
-                <pre className="mt-1 max-h-56 overflow-auto rounded-md border border-brand-rule/50 bg-brand-cream-soft px-2.5 py-1.5 font-mono text-[11.5px] leading-relaxed text-brand-muted">
-                  {formatJson(tool.args)}
-                </pre>
+                <div className="mt-1">
+                  <TruncatedBlock text={formatJson(tool.args)} />
+                </div>
               </div>
             )}
             {tool.result != null && (
@@ -610,9 +739,9 @@ export function ToolPart({
                     </a>
                   )}
                 {typeof tool.result === "string" ? (
-                  <pre className="mt-1 max-h-72 overflow-auto rounded-md border border-brand-rule/50 bg-brand-cream-soft px-2.5 py-1.5 font-mono text-[11.5px] leading-relaxed text-brand-muted">
-                    {tool.result}
-                  </pre>
+                  <div className="mt-1">
+                    <TruncatedBlock text={tool.result} />
+                  </div>
                 ) : (
                   <JsonViewer
                     data={tool.result}
@@ -626,9 +755,9 @@ export function ToolPart({
                 <div className="text-[10px] font-medium uppercase tracking-wide text-rose-600/80">
                   Error
                 </div>
-                <pre className="mt-1 overflow-x-auto rounded-md border border-rose-300/40 bg-rose-50/50 px-2.5 py-1.5 font-mono text-[11.5px] leading-relaxed text-rose-700">
-                  {tool.errorText}
-                </pre>
+                <div className="mt-1">
+                  <TruncatedBlock text={tool.errorText} tone="error" collapsedLines={8} />
+                </div>
               </div>
             )}
           </div>
@@ -701,11 +830,12 @@ export function ToolPartList({
                 red on error, accent-filled while an approval is pending.
 
                 Alignment: the row is `py-1` (4px) and its icon is `mt-0.5`
-                (2px) on a `size-4` (16px) box, so the icon centre sits 14px
-                from the row top. This slot is a 28px-tall flex box pinned to
-                the row top, so its centre lands on exactly that line — and
-                because BOTH dot states centre inside the same slot, the dot
-                no longer shifts when a step starts or finishes. */}
+                (2px) on a `size-4` (16px) box, so the icon's centre sits
+                28px/2 = 14px from the row top. This slot is a 28px-tall flex
+                box pinned to the row top, which puts its centre on exactly
+                that line — and because BOTH dot states centre inside the same
+                slot, the dot no longer shifts when a step starts or finishes.
+                (It used to be a 10px box holding a 12px pulse dot.) */}
             <span className="absolute -left-4.5 top-0 flex h-7 w-3 items-center justify-center bg-brand-cream">
               {active || awaiting ? (
                 <ActivePulseDot />
