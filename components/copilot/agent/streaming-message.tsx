@@ -31,7 +31,6 @@ import {
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import {
-  AlertCircle,
   AlertTriangle,
   Check,
   ChevronRight,
@@ -46,7 +45,6 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
-  ToolPart,
   ToolPartList,
   describeTool,
 } from "./parts/tool-part"
@@ -159,7 +157,6 @@ function StreamingTextCodeBlock({
       </code>
     )
   }
-  const lang = className?.replace("language-", "") ?? ""
   const code = String(children ?? "").replace(/\n$/, "")
   if (isLive) {
     return (
@@ -318,8 +315,6 @@ function ReasoningBlock({
     .map((e) => e.text)
     .join("")
     .trim()
-  const elapsed = useElapsedTimer(isStreaming)
-  const [open, setOpen] = useState(true)
 
   if (!text && !isStreaming) return null
 

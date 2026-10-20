@@ -23,7 +23,6 @@ import {
   Search,
   Globe,
   Mail,
-  Package,
   Truck,
   Banknote,
   Receipt,
@@ -49,7 +48,6 @@ import { cn } from "@/lib/utils";
 import { JsonViewer } from "./json-viewer";
 import type {
   ApprovalResponder,
-  ToolApproval,
   ToolCallEvent,
   ToolCallState,
 } from "../types"
@@ -292,9 +290,6 @@ function basename(p: string): string {
 }
 function asString(v: unknown): string | undefined {
   return typeof v === "string" && v.length > 0 ? v : undefined
-}
-function asNumber(v: unknown): number | undefined {
-  return typeof v === "number" ? v : undefined
 }
 function quote(s: string, max = 56): string {
   const t = s.length > max ? `${s.slice(0, max)}…` : s
