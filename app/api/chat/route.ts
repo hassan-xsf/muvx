@@ -7,7 +7,6 @@ import {
   createUIMessageStreamResponse,
   toUIMessageStream,
   isStepCount,
-  hasToolCall,
   pruneMessages,
   isToolUIPart,
   type UIMessage,
@@ -238,73 +237,19 @@ export async function POST(req: NextRequest) {
       ? `\nUSER CUSTOM PREFERENCES:\n${settings.customInstructions}`
       : ""
 
-    const systemPrompt = `You are Muvx Copilot, the autonomous enterprise transportation intelligence coworker integrated into Muvx TMS.
-User: ${session.user.name || session.user.email} (${session.user.role || "Member"})
+    const systemPrompt = `.
+ ${session.user.name || session.user.email} (${session.user.role || "Member"})
 Workspace: ${tenantId}
 Autonomous Mode (Allow All): ${isAllowAll ? "ENABLED (execute approved transactions without halting)" : "DISABLED (prompt user for write confirmation)"}
-User Permissions:
-- Can create/edit loads: ${perms.has("loads.create")}
-- Can dispatch trips: ${perms.has("trips.create")}
-- Can manage fleet & drivers: ${perms.has("fleet.trucks.create")}
-- Can manage invoices & billing: ${perms.has("invoices.view_all")}
-- Can approve AP expenses: ${perms.has("expenses.view_all")}
-- Can view compliance: ${perms.has("safety.module")}
+work :
+- loads: ${perms.has("loads.create")}
+- trips: ${perms.has("trips.create")}
+- fleet & drivers: ${perms.has("fleet.trucks.create")}
+- invoices & billing: ${perms.has("invoices.view_all")}
+- AP expenses: ${perms.has("expenses.view_all")}
+- compliance: ${perms.has("safety.module")}
 
-FULL OPERATIONAL & COWORKER AGENCY:
-You have direct read, search, and transactional tools across EVERY TMS domain:
-1. Loads:
-   - Book new loads ('bookLoad')
-   - Search freight loads ('queryLoads')
-   - Update load status, rate, or lane dates ('updateLoad')
-   - Mark signed PODs, BOL received, or star loads ('updateLoadDocs')
-2. Trips & Dispatch:
-   - Assign driver & tractor to dispatch ('dispatchTrip')
-   - Update trip status in_transit/completed, log odometer miles ('updateTripStatus')
-3. Fleet & Compliance:
-   - Inspect driver duty, tractors, and CDL alerts ('getFleetStatus')
-   - Onboard new commercial drivers ('createDriver')
-   - Update driver CDL renewal, phone, or duty status ('updateDriver')
-   - Register tractor units ('createTruck') and update maintenance/odometer ('updateTruck')
-   - Register dry vans, reefers, and flatbed trailers ('createTrailer')
-4. Coworker Communications & Scheduling:
-   - Assign operational tasks to drivers with SMS/push notification ('assignDriverTask')
-   - Ask drivers operational questions regarding location/ETA ('askDriverQuestion')
-   - Schedule future automated coworker checkups ('scheduleCoworkerTask')
-   - List scheduled tasks ('listScheduledTasks')
-   - Persist enterprise facts and driver preferences ('saveCopilotMemory')
-   - Recall memories ('recallCopilotMemory')
-5. Customers & Shippers:
-   - Search customers, credit terms, and contact info ('queryCustomers')
-   - Add new shipper/broker customers with Net 30/15 terms ('createCustomer')
-6. Partner Carriers:
-   - Search partner carrier directory with MC# and insurance ('queryCarriers')
-   - Onboard new motor carriers ('createCarrier')
-7. Invoicing & Accounting:
-   - Search customer AR invoices and overdue aging balances ('queryInvoices')
-   - Generate official customer invoice from delivered loads ('createInvoice')
-   - Email customer invoice with Resend payment link ('sendInvoiceEmail')
-   - Record customer payment for invoices ('markInvoicePaid')
-   - Query delivered loads missing signed PODs for factoring ('getMissingPods')
-8. Expenses & Settlements:
-   - Review pending AP trip expenses ('reviewPendingExpenses')
-   - Approve driver expense reimbursement ('approveExpense')
-   - Log new trip expense: fuel, toll, lumper, maintenance ('logTripExpense')
-9. Team Administration:
-   - List workspace members ('listWorkspaceMembers')
-   - Invite, promote, or remove members ('inviteWorkspaceMember', 'updateMemberRole', 'removeMember')
-10. Multi-Step Execution & Sub-Agents:
-    - Formulate multi-step plans ('createExecutionPlan')
-    - Delegate subtasks to specialized coworker personas ('delegateSubtask')
-    - Consult human dispatcher when decisions are required ('askDispatcher')${memorySnippet}${customInstructionsSnippet}
-
-PROTOCOL:
-Be concise, freight-fluent, proactive, and accurate. When performing write operations in autonomous mode, state clearly what actions were executed.
-
-APPROVAL HANDLING:
-When a tool execution is denied or rejected by the operator, do not retry it and do not attempt an equivalent action through another tool. Acknowledge the decision in one sentence and continue with whatever remains permitted.
-
-DENIED TOOL REASONING:
-Never speculate about results of a tool that was denied. Report only what actually executed.`
+.${memorySnippet}${customInstructionsSnippet}`
 
     const toolCtx: ToolContext = {
       userId: session.user.id,
@@ -414,10 +359,19 @@ Never speculate about results of a tool that was denied. Report only what actual
       model: resolvedModel,
       system: systemPrompt,
       messages: modelMessages,
-      // Official built-ins instead of a hand-rolled predicate.
-      // `hasToolCall('askDispatcher')` hands control back to the human the
-      // moment the agent needs a decision — that is the point of the tool.
-      stopWhen: [isStepCount(maxSteps), hasToolCall("askDispatcher")],
+      // Official built-in step limiter only.
+      //
+      // `askDispatcher` used to be in this list as a hand-off mechanism, but
+      // it is a normal tool with an `execute` that returns `{ question,
+      // options }` — putting it in `stopWhen` halted generation the moment
+      // the model reached for it, so the run died before any approval card
+      // could render and before the tool result ever came back. The model
+      // then re-called it in the same step (hence `["askDispatcher",
+      // "askDispatcher"]` in the logs) and the turn ended with nothing but a
+      // question. `askDispatcher` now runs inline like any other tool; the
+      // UI renders its question/options and the agent continues in the same
+      // turn.
+      stopWhen: isStepCount(maxSteps),
       tools: toolsRecord,
 
       // ── Ordering ────────────────────────────────────────────────────
@@ -521,6 +475,47 @@ Never speculate about results of a tool that was denied. Report only what actual
           })
         }
       },
+      // ── Tool lifecycle hooks — these fire around each tool's execute call.
+      // `onToolExecutionStart` fires BEFORE execute() is called.
+      // `onToolExecutionEnd` fires AFTER execute() resolves (or throws).
+      // Both are wrapped in try/catch so a callback error cannot crash the stream.
+      onToolExecutionStart: ({ toolCall }) => {
+        try {
+          trace.toolExecutionStart({
+            toolCallId: toolCall.toolCallId,
+            toolName: toolCall.toolName,
+            input: toolCall.input as Record<string, unknown>,
+          })
+        } catch {
+          /* non-fatal */
+        }
+      },
+      onToolExecutionEnd: ({ toolCall, toolExecutionMs, toolOutput }) => {
+        try {
+          if (toolOutput.type === "tool-error") {
+            trace.toolExecutionEnd({
+              toolCallId: toolCall.toolCallId,
+              toolName: toolCall.toolName,
+              durationMs: toolExecutionMs,
+              ok: false,
+              errorMessage:
+                toolOutput.error instanceof Error
+                  ? toolOutput.error.message
+                  : String(toolOutput.error ?? "unknown"),
+            })
+          } else {
+            trace.toolExecutionEnd({
+              toolCallId: toolCall.toolCallId,
+              toolName: toolCall.toolName,
+              durationMs: toolExecutionMs,
+              ok: true,
+              output: toolOutput.output as Record<string, unknown>,
+            })
+          }
+        } catch {
+          /* non-fatal */
+        }
+      },
     } as Parameters<typeof streamText>[0])
 
     const stream = createUIMessageStream({
@@ -565,35 +560,50 @@ Never speculate about results of a tool that was denied. Report only what actual
         //    chunks reach the client token-by-token. This MUST happen before any
         //    awaiting, otherwise the entire run is buffered server-side and the
         //    UI only updates once generation has finished.
-        writer.merge(
-          toUIMessageStream({
-            stream: result.stream,
-            sendReasoning: true,
-            // Surface real failures to the operator instead of the SDK's
-            // default "An error occurred." — a silent black box makes a TMS
-            // that mutates freight data genuinely dangerous to debug.
-            onError: (error) => {
-              if (error == null) return "Unknown error";
-              if (typeof error === "string") return error;
-              if (error instanceof Error) return error.message;
-              return JSON.stringify(error);
-            },
-            // Official hook for token usage. The client's <Context> component
-            // reads this off message.metadata to render the context-window
-            // meter and cost estimate.
-            messageMetadata: ({ part }) => {
-              if (part.type === "finish") {
-                // Final accounting for this turn: what the operator actually
-                // paid for, in one line.
-                trace.finish({
-                  usage: part.totalUsage,
-                  finishReason: "complete",
-                })
-                return { totalUsage: part.totalUsage }
-              }
-            },
-          })
-        )
+        //
+        //    Wrapped in try/catch: an error thrown inside the execute function
+        //    (e.g. from a DB write inside a tool) becomes an unhandled rejection
+        //    that crashes the Bun worker — producing ERR_INCOMPLETE_CHUNKED_ENCODING
+        //    on the client. The catch ensures the stream is closed gracefully so
+        //    the HTTP response can terminate cleanly.
+        try {
+          writer.merge(
+            toUIMessageStream({
+              stream: result.stream,
+              sendReasoning: true,
+              // Surface real failures to the operator instead of the SDK's
+              // default "An error occurred." — a silent black box makes a TMS
+              // that mutates freight data genuinely dangerous to debug.
+              onError: (error) => {
+                if (error == null) return "Unknown error";
+                if (typeof error === "string") return error;
+                if (error instanceof Error) return error.message;
+                return JSON.stringify(error);
+              },
+              // Official hook for token usage. The client's <Context> component
+              // reads this off message.metadata to render the context-window
+              // meter and cost estimate.
+              messageMetadata: ({ part }) => {
+                if (part.type === "finish") {
+                  // Final accounting for this turn: what the operator actually
+                  // paid for, in one line.
+                  trace.finish({
+                    usage: part.totalUsage,
+                    finishReason: "complete",
+                  })
+                  return { totalUsage: part.totalUsage }
+                }
+              },
+            }),
+          )
+        } catch (mergeErr) {
+          // Log but do not re-throw — a merge error means the underlying stream
+          // errored and has already been surfaced to the client via onError.
+          // Re-throwing here would crash the Bun worker with
+          // ERR_STREAM_PREMATURE_CLOSE or ERR_INCOMPLETE_CHUNKED_ENCODING.
+          console.error(`[chat] writer.merge error:`, mergeErr)
+          trace.fail(mergeErr, { reason: "writer-merge" })
+        }
       },
     })
 

@@ -2128,7 +2128,7 @@ export default function ChatInterface() {
   const [selectedModel, setSelectedModel] = useState("");
   const [botCoat, setBotCoat] = useState<BotCoat>("ink");
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
-  const [allowAll, setAllowAll] = useState(false);
+  const [allowAll, setAllowAll] = useState(true); // Fully autonomous — no approval gates
   const [recentFinish, setRecentFinish] = useState(false);
 
   // `sendAutomaticallyWhen` is THE switch that lets an approved/denied
@@ -2224,12 +2224,32 @@ export default function ChatInterface() {
         traceError("approval:rejected", { id: opts.id, reason: "sdk-missing" })
         return undefined
       }
-      // The SDK return type is `void | PromiseLike<void>`. The .then /
-      // .catch chain only fires on real promises; a `void` return goes
-      // through the "sync path" instead.
-      if (result && typeof (result as PromiseLike<void>).then === "function") {
+      // The SDK return type is `void | PromiseLike<void>`.
+      const settle = () => {
+        traceInfo("approval:invoked", { id: opts.id, ok: true })
+        // EXPLICIT RESUME. `sendAutomaticallyWhen` is a convenience hook that
+        // only fires on some status-transition paths, so it silently does
+        // nothing when the operator clicks after the stream already settled.
+        // The SDK's documented resume path is `sendMessage()` with NO
+        // arguments — it finds the last assistant message carrying an
+        // `approval-responded` part and re-POSTs it to /api/chat, which is
+        // where the approved tool actually executes. Calling it here makes
+        // the resume deterministic instead of race-dependent.
+        if (status === "ready") {
+          traceInfo("approval:resume", { id: opts.id })
+          // `sendMessage(null)` is the SDK's documented resume path: it finds
+          // the last assistant message holding an `approval-responded` part
+          // and re-POSTs it so the approved tool actually executes. The cast
+          // is required because the public overload only types the
+          // "new message" shape.
+          ;(sendMessage as unknown as (m: null) => Promise<void>)(null)
+        } else {
+          traceInfo("approval:resume-deferred", { id: opts.id, status })
+        }
+      }
+      if (typeof (result as PromiseLike<void>).then === "function") {
         Promise.resolve(result as PromiseLike<void>)
-          .then(() => traceInfo("approval:invoked", { id: opts.id, ok: true }))
+          .then(settle)
           .catch((err: unknown) =>
             traceError("approval:rejected", {
               id: opts.id,
@@ -2237,11 +2257,11 @@ export default function ChatInterface() {
             }),
           )
       } else {
-        traceInfo("approval:invoked", { id: opts.id, ok: true, sync: true })
+        settle()
       }
       return result
     },
-    [addToolApprovalResponse],
+    [addToolApprovalResponse, sendMessage, status],
   )
 
   const prevStatusRef = useRef(status);
@@ -2635,6 +2655,7 @@ export default function ChatInterface() {
                       <StreamingAssistantMessage
                         message={streamingMsg}
                         isLoading={isStreamingNow}
+                        onRespondToApproval={respondToApproval}
                       />
                     ) : (
                       renderMessageParts(

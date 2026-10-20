@@ -16,7 +16,28 @@ export type ToolCallState =
   | "input-available"
   | "executing"
   | "output-available"
-  | "output-error";
+  | "output-error"
+  /** Model asked the operator; waiting for a decision. */
+  | "approval-requested"
+  /** Operator answered; the SDK will execute on the next generation. */
+  | "approval-responded";
+
+/** The approval handshake as the SDK hands it to the UI. */
+export interface ToolApproval {
+  id: string;
+  approved?: boolean;
+  reason?: string;
+  requestReason?: string;
+}
+
+/** Callback signature used by the approval card. */
+export type ApprovalResponder = (options: {
+  id: string;
+  approved: boolean;
+  reason?: string;
+  toolName?: string;
+  source?: string;
+}) => void;
 
 export interface ToolCallEvent {
   id: string;
@@ -38,6 +59,8 @@ export interface ToolCallEvent {
   result?: unknown;
   errorText?: string;
   state: ToolCallState;
+  /** Present when the tool is gated behind operator approval. */
+  approval?: ToolApproval;
 }
 
 export interface ReasoningPartEvent {
@@ -177,7 +200,11 @@ export function fromUIMessage(message: UIMessage, isStreaming: boolean): Streami
       const mapState = (s?: string): ToolCallState => {
         if (s === "input-streaming" || s === "input-available") return s;
         if (s === "output-available" || s === "output-error") return s;
-        if (s === "approval-requested" || s === "approval-responded") return "calling";
+        // Approval states are kept verbatim — the renderer needs them to show
+        // the Approve/Reject card. Collapsing them to "calling" (as an earlier
+        // revision did) silently dropped the only interactive affordance in
+        // the whole message, which is why clicking Approve did nothing.
+        if (s === "approval-requested" || s === "approval-responded") return s;
         return "input-available";
       };
       const mapType = (s?: string): ToolCallEvent["type"] => {
@@ -196,6 +223,7 @@ export function fromUIMessage(message: UIMessage, isStreaming: boolean): Streami
         args: (toolPart.input as Record<string, unknown>) ?? {},
         result: toolPart.output,
         errorText: toolPart.errorText,
+        approval: toolPart.approval as ToolApproval | undefined,
       } satisfies ToolCallEvent);
       continue;
     }

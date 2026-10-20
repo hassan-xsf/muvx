@@ -15,6 +15,8 @@
 import { useState } from "react";
 import {
   AlertCircle,
+  Check,
+  X,
   ChevronRight,
   Circle,
   FileText,
@@ -45,7 +47,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { JsonViewer } from "./json-viewer";
-import type { ToolCallEvent, ToolCallState } from "../types";
+import type {
+  ApprovalResponder,
+  ToolApproval,
+  ToolCallEvent,
+  ToolCallState,
+} from "../types"
 
 // ---------------------------------------------------------------------------
 // Per-tool icon map (Copilot-style: file = FileText, search = Search, etc.)
@@ -153,7 +160,120 @@ const ACTIVE_TOOL_STATES = [
 function isActiveToolState(state: ToolCallState | string) {
   return ACTIVE_TOOL_STATES.includes(state as (typeof ACTIVE_TOOL_STATES)[number])
 }
+/** True while the operator still owes us a decision. */
+function isAwaitingApproval(tool: ToolCallEvent): boolean {
+  return tool.state === "approval-requested"
+}
 
+/** True once a decision is in and the SDK is executing or has executed it. */
+function isApprovalResolved(tool: ToolCallEvent): boolean {
+  return (
+    tool.state === "approval-responded" ||
+    tool.state === "output-available" ||
+    tool.state === "output-error"
+  ) && tool.approval?.approved !== undefined
+}
+
+/**
+ * ApprovalCard — the interactive gate for write operations.
+ *
+ * This is the ONLY interactive surface in an assistant message. Without it
+ * the operator sees a stalled tool row with no way to proceed, which reads
+ * as "the agent stopped". Rendered inside the tool row so the pending
+ * action, its inputs, and its consequence are visible together.
+ */
+function ApprovalCard({
+  tool,
+  onRespond,
+}: {
+  tool: ToolCallEvent
+  onRespond?: ApprovalResponder
+}) {
+  const approval = tool.approval
+  if (!approval) return null
+
+  const answered = isApprovalResolved(tool)
+  const approved = approval.approved === true
+  const rejected = approval.approved === false
+
+  return (
+    <div
+      className={cn(
+        "mt-1.5 overflow-hidden rounded-lg border transition-colors",
+        answered && approved && "border-emerald-300/50 bg-emerald-50/30",
+        answered && rejected && "border-rose-300/50 bg-rose-50/30",
+        !answered && "border-brand-accent/35 bg-brand-accent/[0.06]",
+      )}
+    >
+      {!answered ? (
+        <>
+          <div className="flex items-start gap-2 px-3 py-2.5">
+            <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-brand-accent" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[12.5px] font-medium text-brand-ink">
+                {approval.requestReason ??
+                  `Approve ${describeTool(tool.toolName, tool.args).toLowerCase()}?`}
+              </p>
+              <p className="mt-0.5 text-[11px] text-brand-muted-soft">
+                This writes to your live operational data.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2 border-t border-brand-accent/20 px-3 py-2">
+            <button
+              type="button"
+              onClick={() =>
+                onRespond?.({
+                  id: approval.id,
+                  approved: false,
+                  toolName: tool.toolName,
+                  source: "tool-approval-card",
+                })
+              }
+              className="rounded-md border border-brand-rule bg-brand-card px-3 py-1.5 text-[12px] font-medium text-brand-muted transition-colors hover:border-brand-ink/25 hover:text-brand-ink"
+            >
+              Reject
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                onRespond?.({
+                  id: approval.id,
+                  approved: true,
+                  toolName: tool.toolName,
+                  source: "tool-approval-card",
+                })
+              }
+              className="rounded-md bg-brand-ink px-3 py-1.5 text-[12px] font-medium text-brand-cream transition-colors hover:bg-brand-ink-soft"
+            >
+              Approve
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="flex items-center gap-2 px-3 py-2 text-[12px]">
+          {approved ? (
+            <>
+              <Check className="size-3.5 shrink-0 text-emerald-600" />
+              <span className="text-brand-muted">
+                Approved — executing{" "}
+                {describeTool(tool.toolName, tool.args).toLowerCase()}
+              </span>
+            </>
+          ) : (
+            <>
+              <X className="size-3.5 shrink-0 text-rose-600" />
+              <span className="text-brand-muted">
+                Rejected — {describeTool(tool.toolName, tool.args).toLowerCase()}{" "}
+                was not run
+              </span>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 function ActivePulseDot() {
   return (
     <span className="relative flex size-3 items-center justify-center">
@@ -358,10 +478,19 @@ function formatJson(v: unknown): string {
   }
 }
 
-export function ToolPart({ tool }: { tool: ToolCallEvent }) {
+export function ToolPart({
+  tool,
+  onRespond,
+}: {
+  tool: ToolCallEvent
+  onRespond?: ApprovalResponder
+}) {
   const [open, setOpen] = useState(false)
   const error = tool.state === "output-error"
   const isPending = isActiveToolState(tool.state)
+  // While awaiting approval, open the drawer automatically — the operator
+  // needs to see WHAT they are approving, not just the tool name.
+  const awaiting = isAwaitingApproval(tool)
 
   const label = describeTool(tool.toolName, tool.args)
 
@@ -419,11 +548,16 @@ export function ToolPart({ tool }: { tool: ToolCallEvent }) {
                 {targetShort}
               </span>
             )}
+            {awaiting && (
+              <span className="ml-1.5 shrink-0 rounded-full border border-brand-accent/35 bg-brand-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-brand-accent">
+                Awaiting approval
+              </span>
+            )}
             {hasDetails && (
               <ChevronRight
                 className={cn(
                   "ml-auto size-3 shrink-0 text-brand-muted-soft/55 transition-transform",
-                  open && "rotate-90",
+                  (open || awaiting) && "rotate-90",
                 )}
               />
             )}
@@ -431,10 +565,12 @@ export function ToolPart({ tool }: { tool: ToolCallEvent }) {
         </div>
       </button>
 
+      {awaiting && <ApprovalCard tool={tool} onRespond={onRespond} />}
+
       <div
         className={cn(
           "grid transition-[grid-template-rows,opacity] duration-200 ease-out",
-          open && hasDetails
+          (open || awaiting) && hasDetails
             ? "grid-rows-[1fr] opacity-100"
             : "grid-rows-[0fr] opacity-0",
         )}
@@ -507,11 +643,20 @@ export function ToolPart({ tool }: { tool: ToolCallEvent }) {
   )
 }
 
-export function ToolPartList({ tools }: { tools: ToolCallEvent[] }) {
+export function ToolPartList({
+  tools,
+  onRespond,
+}: {
+  tools: ToolCallEvent[]
+  onRespond?: ApprovalResponder
+}) {
   const [expanded, setExpanded] = useState(false)
   if (!tools.length) return null
 
-  const collapsible = tools.length > 4
+  // Never collapse a list that contains a pending approval — hiding the
+  // Approve button behind "show N earlier steps" is a dead end.
+  const hasPendingApproval = tools.some(isAwaitingApproval)
+  const collapsible = tools.length > 4 && !hasPendingApproval
   const visible = collapsible && !expanded ? tools.slice(-3) : tools
   const hidden = tools.length - visible.length
 
@@ -533,46 +678,45 @@ export function ToolPartList({ tools }: { tools: ToolCallEvent[] }) {
       {visible.map((tool, index) => {
         const active = isActiveToolState(tool.state)
         const error = tool.state === "output-error"
+        const awaiting = isAwaitingApproval(tool)
         const only = visible.length === 1
         const first = index === 0
         const last = index === visible.length - 1
         return (
           <div key={`${tool.toolCallId}-${index}`} className="relative">
+            {/* VS Code chat rail: a solid 1px vertical line with a 8px gap
+                where the status dot sits. The line stops short of the first
+                and last dot so it never dangles past the final step. Plain
+                inset maths — no gradient masks, so it renders identically in
+                every browser and stays crisp at 1x. */}
             <span
               aria-hidden
               className={cn(
-                "absolute -left-3 top-0 bottom-0 w-px bg-brand-muted-soft/55",
+                "absolute -left-3 w-px bg-brand-rule",
                 only && !active && "hidden",
-                only &&
-                  active &&
-                  "[mask-image:linear-gradient(to_bottom,#000_0_5px,transparent_5px_20px,#000_20px_100%)]",
-                !only &&
-                  first &&
-                  "[mask-image:linear-gradient(to_bottom,transparent_0_20px,#000_20px_100%)]",
-                !only &&
-                  last &&
-                  "[mask-image:linear-gradient(to_bottom,#000_0_5px,transparent_5px_100%)]",
-                !only &&
-                  !first &&
-                  !last &&
-                  "[mask-image:linear-gradient(to_bottom,#000_0_5px,transparent_5px_20px,#000_20px_100%)]",
+                only && active && "top-5 bottom-0",
+                !only && first && "top-5 bottom-0",
+                !only && last && "top-0 bottom-5",
+                !only && !first && !last && "top-0 bottom-0",
               )}
             />
-            <span className="absolute -left-4 top-3 flex size-2 items-center justify-center bg-brand-cream">
-              {active && !error ? (
+            {/* Status dot: hollow ring at rest, filled + pulsing while active,
+                red on error, accent-filled while an approval is pending. */}
+            <span className="absolute -left-[18px] top-2 flex size-2.5 items-center justify-center bg-brand-cream">
+              {active || awaiting ? (
                 <ActivePulseDot />
               ) : (
                 <Circle
                   className={cn(
-                    "size-1.5",
+                    "size-[7px] border",
                     error
-                      ? "fill-rose-600 text-rose-600"
-                      : "fill-brand-cream text-brand-muted-soft",
+                      ? "border-rose-500 bg-rose-500"
+                      : "border-brand-muted-soft/60 bg-transparent",
                   )}
                 />
               )}
             </span>
-            <ToolPart tool={tool} />
+            <ToolPart tool={tool} onRespond={onRespond} />
           </div>
         )
       })}

@@ -127,6 +127,13 @@ export class TurnLogger {
   step = (fields: LogFields) => this.event("step", fields, "INFO");
   toolStart = (fields: LogFields) => this.event("tool:start", fields);
   toolEnd = (fields: LogFields) => this.event("tool:end", fields);
+  // Fires inside the SDK's onToolExecutionStart/onToolExecutionEnd hooks.
+  // Different from toolStart/toolEnd (which are inside our execute wrapper)
+  // so we can distinguish "tool was called by model" vs "tool finished".
+  toolExecutionStart = (fields: LogFields) =>
+    this.event("tool-execution:start", fields);
+  toolExecutionEnd = (fields: LogFields) =>
+    this.event("tool-execution:end", fields);
   approval = (fields: LogFields) => this.event("approval", fields, "WARN");
   chunk = (fields: LogFields) => this.event("stream:chunk", fields);
   finish = (fields: LogFields) => this.event("finish", fields, "INFO");

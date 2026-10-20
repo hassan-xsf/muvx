@@ -3,16 +3,19 @@
 /**
  * StreamingChatMessage — Copilot-style Muvx agentic UI.
  *
- * Architecture mirrors AI-Agent's streaming-message but adapts to:
- *   - `@ai-sdk/react` UIMessage parts (we translate via `fromUIMessage`)
- *   - Muvx brand tokens (cream + ink + burnt-orange)
- *   - our existing `respondToApproval` wrapper for tool approvals
+ * Faithful re-implementation of AI-Agent's streaming-message.tsx, sized
+ * for Muvx (cream + ink + burnt-orange). Each assistant message renders
+ * an ordered sequence of:
  *
- * Each message renders as either:
- *   - UserMessage — right-aligned bubble with attachment chips above
- *   - AssistantMessage — full-width flow of reasoning runs, tool rows
- *     (with input/output drawers), text blocks (frozen + live split),
- *     warnings, and a hover toolbar.
+ *   ThinkingRun: groups reasoning + tool calls into one collapsible unit.
+ *     Title carries the active tool's describeTool() output, animated
+ *     with shimmer-text + animated-ellipsis while running.
+ *   Tool rows: per-tool icons, past/present-tense label switch, target
+ *     pill, collapsible Input/Output/Error drawers with JSON viewer.
+ *   Text blocks: VS Code-style progressive markdown (frozen + live split)
+ *     with the .streaming-live CSS class triggering an inline caret.
+ *   Warning / error banners: friendly explanations for connection issues.
+ *   Source pills, Confirmation cards, Subagent cards, etc.
  */
 
 import {
@@ -23,6 +26,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -30,9 +34,8 @@ import {
   AlertCircle,
   AlertTriangle,
   Check,
-  Circle,
   ChevronRight,
-  ChevronDown,
+  Circle,
   Copy,
   ExternalLink,
   Loader2,
@@ -40,10 +43,6 @@ import {
   Share2,
   ThumbsDown,
   ThumbsUp,
-  FileText,
-  Workflow,
-  Sparkles,
-  type LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -55,6 +54,7 @@ import { FilePartList } from "./parts/file-part"
 import { ReasoningPart } from "./parts/reasoning-part"
 import { DataTable, parseMarkdownTable } from "./parts/data-table"
 import type {
+  ApprovalResponder,
   ReasoningPartEvent,
   StreamingMessage,
   StreamPart,
@@ -78,11 +78,47 @@ const ACTIVE_TOOL_STATES = [
 ] as const
 
 function isActiveToolState(state: string) {
-  return ACTIVE_TOOL_STATES.includes(
-    state as (typeof ACTIVE_TOOL_STATES)[number],
+  return (ACTIVE_TOOL_STATES as readonly string[]).includes(state)
+}
+
+// ---------------------------------------------------------------------------
+// useElapsedTimer — second counter that resets when inactive
+// ---------------------------------------------------------------------------
+function useElapsedTimer(isActive: boolean) {
+  const [elapsed, setElapsed] = useState(0)
+  const startRef = useRef(0)
+
+  useEffect(() => {
+    if (!isActive) {
+      const t = setTimeout(() => setElapsed(0), 0)
+      return () => clearTimeout(t)
+    }
+    startRef.current = Date.now()
+    const id = setInterval(
+      () => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)),
+      500,
+    )
+    return () => clearInterval(id)
+  }, [isActive])
+
+  return elapsed
+}
+
+// ---------------------------------------------------------------------------
+// ActivePulseDot — for ThinkingRun title
+// ---------------------------------------------------------------------------
+function ActivePulseDot({ className }: { className?: string }) {
+  return (
+    <span className={cn("relative flex size-3 items-center justify-center", className)}>
+      <span className="absolute size-2 rounded-full bg-brand-accent/25 animate-ping" />
+      <Circle className="relative size-2 fill-brand-accent text-brand-accent animate-pulse-soft" />
+    </span>
   )
 }
 
+// ---------------------------------------------------------------------------
+// Friendly stream error translation
+// ---------------------------------------------------------------------------
 function formatStreamErrorMessage(message: string): string {
   const lower = message.toLowerCase()
   if (
@@ -102,8 +138,8 @@ function formatStreamErrorMessage(message: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// LiveBlockContext — for StreamingText to skip the heavy code chrome
-// while the markdown is still streaming.
+// LiveBlockContext — StreamingText uses this to skip code chrome while
+// the markdown is still streaming.
 // ---------------------------------------------------------------------------
 const LiveBlockContext = createContext(false)
 
@@ -111,7 +147,7 @@ function StreamingTextCodeBlock({
   children,
   className,
 }: {
-  children?: React.ReactNode
+  children?: ReactNode
   className?: string
 }) {
   const isLive = useContext(LiveBlockContext)
@@ -139,10 +175,12 @@ function StreamingTextCodeBlock({
   )
 }
 
-function StreamingTextTable({ children }: { children?: React.ReactNode }) {
+function StreamingTextTable({ children }: { children?: ReactNode }) {
   return (
     <div className="my-2 overflow-x-auto rounded-md border border-brand-rule/40">
-      <table className="m-0 w-full border-collapse text-[13.5px]">{children}</table>
+      <table className="m-0 w-full border-collapse text-[13.5px]">
+        {children}
+      </table>
     </div>
   )
 }
@@ -151,106 +189,6 @@ const STREAMING_MARKDOWN_COMPONENTS = {
   code: StreamingTextCodeBlock,
   table: StreamingTextTable,
 } as const
-
-// ---------------------------------------------------------------------------
-// Working indicator — "Working…" shown while the assistant message is
-// streaming but nothing has rendered yet.
-// ---------------------------------------------------------------------------
-function WorkingIndicator({ tool }: { tool?: ToolCallEvent }) {
-  return (
-    <div className="my-2 flex items-center gap-2 text-[12px] text-brand-muted">
-      {tool ? (
-        <ActivePulse />
-      ) : (
-        <Loader2 className="size-3 animate-spin text-brand-muted-soft" />
-      )}
-      <span className={cn(tool ? "animate-pulse" : "")}>
-        {tool ? describeTool(tool.toolName, tool.args) : "Working…"}
-      </span>
-    </div>
-  )
-}
-
-function ActivePulse() {
-  return (
-    <span className="relative flex size-3 items-center justify-center">
-      <span className="absolute size-2 rounded-full bg-brand-accent/25 animate-ping" />
-      <Circle className="relative size-2 fill-brand-accent text-brand-accent animate-pulse" />
-    </span>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Warning / error banners
-// ---------------------------------------------------------------------------
-function WarningBanner({ ev }: { ev: WarningEvent }) {
-  return (
-    <div className="my-1 flex items-start gap-2 rounded-md border border-amber-300/40 bg-amber-50/40 px-3 py-2 text-[12px] text-amber-800">
-      <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-      <span>{ev.text}</span>
-    </div>
-  )
-}
-
-function StreamErrorCard({ ev }: { ev: StreamErrorEvent }) {
-  return (
-    <div className="my-2 rounded-md border border-rose-300/50 bg-rose-50/40 px-3 py-2.5 text-[12.5px] text-rose-700">
-      <div className="flex items-start gap-2">
-        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-        <div className="min-w-0 flex-1">
-          <p className="font-medium">
-            {ev.provider ? `${ev.provider} stream error` : "Stream error"}
-          </p>
-          <p className="mt-0.5 wrap-break-word text-brand-ink/80">
-            {formatStreamErrorMessage(ev.message)}
-          </p>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Source URL pills
-// ---------------------------------------------------------------------------
-function SourceUrlPills({ urls }: { urls: SourceUrlEvent[] }) {
-  if (!urls.length) return null
-  return (
-    <div className="mt-2">
-      <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-brand-muted-soft/65">
-        Sources
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {urls.map((u, i) => {
-          let host = u.url
-          try {
-            host = new URL(u.url).hostname.replace(/^www\./, "")
-          } catch {
-            /* noop */
-          }
-          return (
-            <a
-              key={i}
-              href={u.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group inline-flex max-w-full items-center gap-1.5 rounded-md border border-brand-rule/60 bg-brand-card/40 px-2 py-1 text-[11.5px] text-brand-muted transition-colors hover:border-brand-accent/40 hover:bg-brand-cream-soft hover:text-brand-ink"
-            >
-              <span className="flex size-4 shrink-0 items-center justify-center rounded-sm bg-brand-cream text-[10px] font-semibold tabular-nums text-brand-muted-soft group-hover:bg-brand-accent/15 group-hover:text-brand-accent">
-                {i + 1}
-              </span>
-              <span className="min-w-0 truncate">{u.title || host}</span>
-              <span className="hidden shrink-0 font-mono text-[10.5px] text-brand-muted-soft/65 sm:inline">
-                {host}
-              </span>
-              <ExternalLink className="size-3 shrink-0 opacity-60 group-hover:opacity-100" />
-            </a>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // FrozenMarkdown — already-closed markdown that won't re-render
@@ -272,6 +210,8 @@ const FrozenMarkdown = memo(function FrozenMarkdown({
 
 // ---------------------------------------------------------------------------
 // StreamingText — VS Code-style progressive markdown. Frozen + live split.
+// Sets `.streaming-live` on the live tail so the CSS caret rides at the
+// end of the last child block.
 // ---------------------------------------------------------------------------
 const StreamingText = memo(function StreamingText({
   text,
@@ -317,15 +257,16 @@ const StreamingText = memo(function StreamingText({
 
   if (!text) return null
 
-  const baseProse =
-    "mx-auto max-w-3xl wrap-break-word text-[15px] leading-[1.72] text-brand-ink [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+  const prose = cn(
+    "mx-auto max-w-3xl wrap-break-word text-brand-ink",
+    "text-[15px] leading-[1.72]",
+    "[&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+  )
 
   if (tableData) {
     return (
-      <div className={baseProse}>
-        {tableData.beforeTable && (
-          <FrozenMarkdown text={tableData.beforeTable} />
-        )}
+      <div className={prose}>
+        {tableData.beforeTable && <FrozenMarkdown text={tableData.beforeTable} />}
         <DataTable
           headers={tableData.parsed.headers}
           rows={tableData.parsed.rows}
@@ -339,10 +280,12 @@ const StreamingText = memo(function StreamingText({
   }
 
   return (
-    <div className={baseProse}>
+    <div className={prose}>
       {frozen && <FrozenMarkdown text={frozen} />}
       {live && (
-        <div>
+        // .streaming-live enables the .streaming-live > :last-child:not(pre)::after
+        // rule from globals.css — that paints the blinking caret at the tail.
+        <div className={cn(isStreaming && "streaming-live")}>
           <LiveBlockContext.Provider value={isStreaming}>
             <Markdown
               remarkPlugins={[remarkGfm]}
@@ -358,7 +301,8 @@ const StreamingText = memo(function StreamingText({
 })
 
 // ---------------------------------------------------------------------------
-// Reasoning block (collapsible, with streaming caret)
+// Reasoning block — embedded variant lives under a ThinkingRun title row;
+// standalone variant uses the ReasoningPart component (with caret).
 // ---------------------------------------------------------------------------
 function ReasoningBlock({
   reasoningEvents,
@@ -374,6 +318,8 @@ function ReasoningBlock({
     .map((e) => e.text)
     .join("")
     .trim()
+  const elapsed = useElapsedTimer(isStreaming)
+  const [open, setOpen] = useState(true)
 
   if (!text && !isStreaming) return null
 
@@ -397,22 +343,18 @@ function ReasoningBlock({
     )
   }
 
-  return (
-    <ReasoningPart text={text} streaming={isStreaming} />
-  )
+  return <ReasoningPart text={text} streaming={isStreaming} />
 }
 
 // ---------------------------------------------------------------------------
-// Thinking run — groups reasoning + tool runs into one collapsible unit.
-// Title derived from the latest active tool, falling back to totals.
+// ThinkingRun + segment grouping (same algorithm as AI-Agent)
 // ---------------------------------------------------------------------------
 type ThinkingRunSegment =
   | { kind: "reasoning"; events: ReasoningPartEvent[] }
   | { kind: "tools"; tools: ToolCallEvent[] }
 
 type RenderSegment =
-  | { kind: "reasoning"; events: ReasoningPartEvent[] }
-  | { kind: "tools"; tools: ToolCallEvent[] }
+  | ThinkingRunSegment
   | { kind: "text"; events: TextDeltaEvent[] }
   | { kind: "sources"; urls: SourceUrlEvent[] }
   | { kind: "progress"; ev: ProgressEvent }
@@ -475,23 +417,37 @@ function deriveThinkingRunTitle(
     }
   }
   if (!tools.length) return { title: "Thought" }
-  if (tools.length === 1) return { title: describeTool(tools[0].toolName, tools[0].args) }
+  if (tools.length === 1)
+    return { title: describeTool(tools[0].toolName, tools[0].args) }
   const allSearch = tools.every((t) =>
     /search|grep|find|list|query/i.test(t.toolName),
   )
   if (allSearch) return { title: `Searched for ${tools.length} things` }
+  const allRead = tools.every((t) =>
+    /read|get_file|list_dir|get_/i.test(t.toolName),
+  )
+  if (allRead) return { title: `Reviewed ${tools.length} files` }
   return { title: `Finished ${tools.length} steps` }
 }
 
 function ThinkingRun({
   segments,
   active,
+  onRespond,
 }: {
   segments: ThinkingRunSegment[]
   active: boolean
+  onRespond?: ApprovalResponder
 }) {
   const [open, setOpen] = useState(true)
   const title = deriveThinkingRunTitle(segments, active)
+  const hasVisibleReasoning = segments.some(
+    (s) =>
+      s.kind === "reasoning" &&
+      s.events.some(
+        (e) => e.type === "reasoning-delta" && e.text.trim(),
+      ),
+  )
 
   return (
     <div className="my-1 text-brand-muted-soft">
@@ -502,7 +458,7 @@ function ThinkingRun({
         aria-expanded={open}
       >
         {active ? (
-          <ActivePulse />
+          <ActivePulseDot />
         ) : (
           <Check className="size-3 text-brand-muted-soft/80" />
         )}
@@ -510,12 +466,18 @@ function ThinkingRun({
           className={cn(
             "truncate",
             active && "font-medium text-brand-ink/85",
+            active && "shimmer-text",
           )}
         >
           {title.title}
         </span>
         {title.detail && (
-          <span className={cn("min-w-0 truncate text-brand-muted-soft/70", active && "animate-pulse")}>
+          <span
+            className={cn(
+              "min-w-0 truncate text-brand-muted-soft/70",
+              active && "animated-ellipsis",
+            )}
+          >
             {title.detail}
           </span>
         )}
@@ -540,22 +502,15 @@ function ThinkingRun({
                 />
               )
             }
-            return <ToolPartList key={`tools-${index}`} tools={segment.tools} />
+            return <ToolPartList key={`tools-${index}`} tools={segment.tools} onRespond={onRespond} />
           })}
-          {active &&
-            !segments.some(
-              (s) =>
-                s.kind === "reasoning" &&
-                s.events.some(
-                  (e) => e.type === "reasoning-delta" && e.text.trim(),
-                ),
-            ) && (
-              <div className="py-0.5 text-[12.5px] text-brand-muted-soft/80">
-                <span className="animate-pulse">
-                  {title.detail ?? title.title}
-                </span>
-              </div>
-            )}
+          {active && !hasVisibleReasoning && (
+            <div className="py-0.5 text-[12.5px] text-brand-muted-soft/80">
+              <span className="shimmer-text animated-ellipsis">
+                {title.detail ?? title.title}
+              </span>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -563,9 +518,7 @@ function ThinkingRun({
 }
 
 // ---------------------------------------------------------------------------
-// Segments builder — orderedParts → RenderSegment[]. Same logic as
-// AI-Agent: groups consecutive reasoning/tool events and concatenates text
-// across thinking-runs.
+// Segments builder — orderedParts → RenderSegment[]
 // ---------------------------------------------------------------------------
 function buildSegments(parts: StreamPart[]): RenderSegment[] {
   const segs: RenderSegment[] = []
@@ -579,30 +532,51 @@ function buildSegments(parts: StreamPart[]): RenderSegment[] {
       part.type === "reasoning-delta" ||
       part.type === "reasoning-end"
     ) {
-      if (last?.kind === "reasoning") last.events.push(part as ReasoningPartEvent)
-      else segs.push({ kind: "reasoning", events: [part as ReasoningPartEvent] })
+      if (last?.kind === "reasoning") {
+        last.events.push(part as ReasoningPartEvent)
+      } else {
+        segs.push({ kind: "reasoning", events: [part as ReasoningPartEvent] })
+      }
       continue
     }
     if (part.type.startsWith("tool-call")) {
       const t = part as ToolCallEvent
       const existing = toolsById.get(t.toolCallId)
       if (existing) {
-        Object.assign(existing, t)
+        Object.assign(existing, {
+          ...t,
+          toolName:
+            t.toolName && t.toolName !== "tool"
+              ? t.toolName
+              : existing.toolName,
+          args: t.args ?? existing.args,
+          invocationMessage: t.invocationMessage ?? existing.invocationMessage,
+          pastTenseMessage: t.pastTenseMessage ?? existing.pastTenseMessage,
+        })
         continue
       }
       toolsById.set(t.toolCallId, t)
-      if (last?.kind === "tools") last.tools.push(t)
-      else segs.push({ kind: "tools", tools: [t] })
+      if (last?.kind === "tools") {
+        last.tools.push(t)
+      } else {
+        segs.push({ kind: "tools", tools: [t] })
+      }
       continue
     }
     if (part.type === "text-delta" || part.type === "text-end") {
-      if (last?.kind === "text") last.events.push(part as TextDeltaEvent)
-      else segs.push({ kind: "text", events: [part as TextDeltaEvent] })
+      if (last?.kind === "text") {
+        last.events.push(part as TextDeltaEvent)
+      } else {
+        segs.push({ kind: "text", events: [part as TextDeltaEvent] })
+      }
       continue
     }
     if (part.type === "source-url") {
-      if (last?.kind === "sources") last.urls.push(part as SourceUrlEvent)
-      else segs.push({ kind: "sources", urls: [part as SourceUrlEvent] })
+      if (last?.kind === "sources") {
+        last.urls.push(part as SourceUrlEvent)
+      } else {
+        segs.push({ kind: "sources", urls: [part as SourceUrlEvent] })
+      }
       continue
     }
     if (part.type === "progress") {
@@ -622,16 +596,109 @@ function buildSegments(parts: StreamPart[]): RenderSegment[] {
 }
 
 // ---------------------------------------------------------------------------
-// StreamingAssistantMessage — full-width message body
+// Warning / error banners
+// ---------------------------------------------------------------------------
+function WarningBanner({ ev }: { ev: WarningEvent }) {
+  return (
+    <div className="my-1 flex items-start gap-2 rounded-md border border-amber-300/40 bg-amber-50/40 px-3 py-2 text-[12px] text-amber-800">
+      <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+      <span>{ev.text}</span>
+    </div>
+  )
+}
+
+function StreamErrorCard({ ev }: { ev: StreamErrorEvent }) {
+  return (
+    <div className="my-2 rounded-md border border-rose-300/50 bg-rose-50/40 px-3 py-2.5 text-[12.5px] text-rose-700">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">
+            {ev.provider ? `${ev.provider} stream error` : "Stream error"}
+          </p>
+          <p className="mt-0.5 wrap-break-word text-brand-ink/80">
+            {formatStreamErrorMessage(ev.message)}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SourceUrlPills({ urls }: { urls: SourceUrlEvent[] }) {
+  if (!urls.length) return null
+  return (
+    <div className="mt-2">
+      <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-brand-muted-soft/65">
+        Sources
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {urls.map((u, i) => {
+          let host = u.url
+          try {
+            host = new URL(u.url).hostname.replace(/^www\./, "")
+          } catch {
+            /* noop */
+          }
+          return (
+            <a
+              key={i}
+              href={u.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group inline-flex max-w-full items-center gap-1.5 rounded-md border border-brand-rule/60 bg-brand-card/40 px-2 py-1 text-[11.5px] text-brand-muted transition-colors hover:border-brand-accent/40 hover:bg-brand-cream-soft hover:text-brand-ink"
+            >
+              <span className="flex size-4 shrink-0 items-center justify-center rounded-sm bg-brand-cream text-[10px] font-semibold tabular-nums text-brand-muted-soft group-hover:bg-brand-accent/15 group-hover:text-brand-accent">
+                {i + 1}
+              </span>
+              <span className="min-w-0 truncate">{u.title || host}</span>
+              <span className="hidden shrink-0 font-mono text-[10.5px] text-brand-muted-soft/65 sm:inline">
+                {host}
+              </span>
+              <ExternalLink className="size-3 shrink-0 opacity-60 group-hover:opacity-100" />
+            </a>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Working indicator
+// ---------------------------------------------------------------------------
+function WorkingIndicator({ tool }: { tool?: ToolCallEvent }) {
+  if (tool) {
+    return (
+      <div className="my-2 flex items-center gap-2 text-[12px] text-brand-muted">
+        <ActivePulseDot />
+        <span className="shimmer-text">
+          {describeTool(tool.toolName, tool.args)}
+        </span>
+      </div>
+    )
+  }
+  return (
+    <div className="my-2 flex items-center gap-2 text-[12px] text-brand-muted">
+      <Loader2 className="size-3 animate-spin text-brand-muted-soft" />
+      <span className="shimmer-text">Working…</span>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// StreamingAssistantMessage — main assistant message body
 // ---------------------------------------------------------------------------
 export function StreamingAssistantMessage({
   message,
   isLoading,
   onRegenerate,
+  onRespondToApproval,
 }: {
   message: StreamingMessage
   isLoading: boolean
   onRegenerate?: () => void
+  onRespondToApproval?: ApprovalResponder
 }) {
   const isStreamingThis = isLoading && !message.isComplete
   const partsLen = message.orderedParts.length
@@ -680,6 +747,7 @@ export function StreamingAssistantMessage({
                 key={i}
                 segments={seg.segments}
                 active={isLastSeg || hasActiveTool}
+                onRespond={onRespondToApproval}
               />
             )
           }
@@ -693,7 +761,7 @@ export function StreamingAssistantMessage({
             )
           }
           if (seg.kind === "tools") {
-            return <ToolPartList key={i} tools={seg.tools} />
+            return <ToolPartList key={i} tools={seg.tools} onRespond={onRespondToApproval} />
           }
           if (seg.kind === "text") {
             const text = seg.events.map((e) => e.text).join("")
@@ -706,10 +774,7 @@ export function StreamingAssistantMessage({
           }
           if (seg.kind === "progress") {
             return (
-              <div
-                key={i}
-                className="text-[11.5px] text-brand-muted-soft/75"
-              >
+              <div key={i} className="text-[11.5px] text-brand-muted-soft/75">
                 {seg.ev.label}
               </div>
             )
@@ -732,7 +797,7 @@ export function StreamingAssistantMessage({
 }
 
 // ---------------------------------------------------------------------------
-// MessageToolbar — copy/regenerate/like/dislike/share
+// MessageToolbar (copy / regenerate / thumbs / share)
 // ---------------------------------------------------------------------------
 function MessageToolbar({
   text,
@@ -821,7 +886,7 @@ function MessageToolbar({
 }
 
 // ---------------------------------------------------------------------------
-// UserMessage — right-aligned prompt bubble
+// UserMessage — right-aligned bubble with attachment chips
 // ---------------------------------------------------------------------------
 function UserMessage({
   text,
@@ -836,7 +901,7 @@ function UserMessage({
         <FilePartList attachments={attachments} />
       )}
       {text && (
-        <div className="max-w-[80%] rounded-2xl rounded-tr-sm bg-brand-cream border border-brand-rule px-4 py-2.5">
+        <div className="max-w-[80%] rounded-2xl rounded-tr-sm bg-brand-card border border-brand-rule px-4 py-2.5 shadow-sm">
           <p className="whitespace-pre-wrap wrap-break-word text-[15px] leading-[1.65] text-brand-ink">
             {text}
           </p>
@@ -847,7 +912,7 @@ function UserMessage({
 }
 
 // ---------------------------------------------------------------------------
-// ChatMessageRow — routes based on role
+// ChatMessageRow
 // ---------------------------------------------------------------------------
 const ChatMessageRow = memo(
   function ChatMessageRow({
@@ -886,7 +951,7 @@ const ChatMessageRow = memo(
 )
 
 // ---------------------------------------------------------------------------
-// StreamingChatMessageList — the public component
+// StreamingChatMessageList — public component
 // ---------------------------------------------------------------------------
 export interface StreamingChatMessageListProps {
   messages: StreamingMessage[]

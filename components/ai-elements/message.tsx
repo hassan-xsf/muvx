@@ -98,10 +98,15 @@ export const MessageAction = ({
   );
 
   if (tooltip) {
+    // `TooltipTrigger` renders its own <button> wrapper by default. Passing the
+    // Button through it produced `<button><button/></button>`, which React
+    // logs as a hydration error and browsers silently un-nest — the click
+    // handler then never fires. `render` tells Base UI to use the Button
+    // itself as the trigger element, so exactly one button is in the DOM.
     return (
       <TooltipProvider>
         <Tooltip>
-          <TooltipTrigger>{button}</TooltipTrigger>
+          <TooltipTrigger render={button} />
           <TooltipContent>
             <p>{tooltip}</p>
           </TooltipContent>

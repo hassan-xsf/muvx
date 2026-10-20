@@ -642,4 +642,105 @@
   .bot-dots span {
     animation: none !important;
   }
+
+  .shimmer-text,
+  .animated-ellipsis::after,
+  .streaming-live > :last-child:not(pre)::after {
+    animation: none !important;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   COPILOT STREAMING UTILITIES (ported from AI-Agent)
+   ────────────────────────────────────────────────────────────── */
+
+/* Caret blink — VS Code Copilot chat. The ::after rides on the last child
+   inside `.streaming-live`, falling back to a 1px black bar. Excluded from
+   <pre> so unfinished code blocks don't blink. */
+@keyframes copilot-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.streaming-live > :last-child:not(pre)::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 0.95em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0.55;
+  animation: copilot-blink 1.1s step-end infinite;
+}
+
+/* Sweeping shimmer — paints muted text with a brighter band. Use on
+   ThinkingRun title or ProgressLine text to convey "alive". */
+@keyframes copilot-shimmer {
+  0% {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
+}
+
+.shimmer-text {
+  background-image: linear-gradient(
+    90deg,
+    var(--brand-muted) 0%,
+    var(--brand-muted) 30%,
+    var(--brand-ink) 50%,
+    var(--brand-muted) 70%,
+    var(--brand-muted) 100%
+  );
+  background-size: 400% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: copilot-shimmer 2s linear infinite;
+  will-change: background-position;
+}
+
+/* Animated ellipsis via ::after content swap */
+@keyframes copilot-ellipsis {
+  0% { content: ""; }
+  25% { content: "."; }
+  50% { content: ".."; }
+  75% { content: "..."; }
+  to { content: ""; }
+}
+
+.animated-ellipsis::after {
+  content: "";
+  display: inline-block;
+  width: 1.25em;
+  max-width: 1.25em;
+  overflow: hidden;
+  text-align: left;
+  animation: copilot-ellipsis 1s steps(4, end) infinite;
+}
+
+/* Reserve vertical space on the streaming assistant message so the page
+   does not jump as text streams in. */
+[data-chat-streaming="true"] {
+  min-height: var(--chat-streaming-min-h, 80px);
+  contain: layout style;
+}
+
+/* Pulse-soft for the active-state dot */
+@keyframes copilot-pulse-soft {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.animate-pulse-soft {
+  animation: copilot-pulse-soft 2.4s ease-in-out infinite;
 }
