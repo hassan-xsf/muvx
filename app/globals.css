@@ -645,7 +645,7 @@
 
   .shimmer-text,
   .animated-ellipsis::after,
-  .streaming-live > :last-child:not(pre)::after {
+  .streaming-live> :last-child:not(pre)::after {
     animation: none !important;
   }
 }
@@ -663,7 +663,7 @@
   }
 }
 
-.streaming-live > :last-child:not(pre)::after {
+.streaming-live> :last-child:not(pre)::after {
   content: "";
   display: inline-block;
   width: 2px;
@@ -682,20 +682,19 @@
   0% {
     background-position: 120% 0;
   }
+
   to {
     background-position: -120% 0;
   }
 }
 
 .shimmer-text {
-  background-image: linear-gradient(
-    90deg,
-    var(--brand-muted) 0%,
-    var(--brand-muted) 30%,
-    var(--brand-ink) 50%,
-    var(--brand-muted) 70%,
-    var(--brand-muted) 100%
-  );
+  background-image: linear-gradient(90deg,
+      var(--brand-muted) 0%,
+      var(--brand-muted) 30%,
+      var(--brand-ink) 50%,
+      var(--brand-muted) 70%,
+      var(--brand-muted) 100%);
   background-size: 400% 100%;
   background-clip: text;
   -webkit-background-clip: text;
@@ -707,11 +706,25 @@
 
 /* Animated ellipsis via ::after content swap */
 @keyframes copilot-ellipsis {
-  0% { content: ""; }
-  25% { content: "."; }
-  50% { content: ".."; }
-  75% { content: "..."; }
-  to { content: ""; }
+  0% {
+    content: "";
+  }
+
+  25% {
+    content: ".";
+  }
+
+  50% {
+    content: "..";
+  }
+
+  75% {
+    content: "...";
+  }
+
+  to {
+    content: "";
+  }
 }
 
 .animated-ellipsis::after {
@@ -733,9 +746,12 @@
 
 /* Pulse-soft for the active-state dot */
 @keyframes copilot-pulse-soft {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 0.6;
   }
+
   50% {
     opacity: 1;
   }
@@ -747,6 +763,7 @@
 
 /* ─── PROFESSIONAL DOCUMENT PRINTING RULES ─── */
 @media print {
+
   /* Hide all app chrome, sidebars, headers, banners, navigation, and floating widgets */
   [data-slot="sidebar"],
   [data-sidebar="sidebar"],

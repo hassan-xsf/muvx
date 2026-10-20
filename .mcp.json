@@ -9,6 +9,13 @@
     },
     "better-auth": {
       "url": "https://mcp.better-auth.com/mcp"
+    },
+    "composio": {
+      "serverUrl": "https://connect.composio.dev/mcp",
+      "url": "https://connect.composio.dev/mcp",
+      "headers": {
+        "x-consumer-api-key": "ck_qyMzsPldMnj2qF2yKfNn"
+      }
     }
   }
 }
