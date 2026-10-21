@@ -19,17 +19,14 @@
  */
 
 import {
-  createContext,
   memo,
-  useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react"
-import Markdown from "react-markdown"
-import remarkGfm from "remark-gfm"
+import { MessageResponse } from "@/components/ai-elements/message"
 import {
   AlertCircle,
   AlertTriangle,
@@ -138,80 +135,8 @@ function formatStreamErrorMessage(message: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// LiveBlockContext — StreamingText uses this to skip code chrome while
-// the markdown is still streaming.
-// ---------------------------------------------------------------------------
-const LiveBlockContext = createContext(false)
-
-function StreamingTextCodeBlock({
-  children,
-  className,
-}: {
-  children?: ReactNode
-  className?: string
-}) {
-  const isLive = useContext(LiveBlockContext)
-  const isInline = !className
-  if (isInline) {
-    return (
-      <code className="rounded-md bg-brand-cream px-1.5 py-0.5 font-mono text-[13px] text-brand-ink">
-        {children}
-      </code>
-    )
-  }
-  const lang = className?.replace("language-", "") ?? ""
-  const code = String(children ?? "").replace(/\n$/, "")
-  if (isLive) {
-    return (
-      <pre className="my-2 max-h-105 overflow-auto rounded-lg border border-brand-rule/40 bg-brand-cream-soft px-3 py-2 font-mono text-[12.5px] leading-relaxed text-brand-ink">
-        <code>{code}</code>
-      </pre>
-    )
-  }
-  return (
-    <pre className="my-2 overflow-x-auto rounded-lg border border-brand-rule/60 bg-brand-cream-soft px-3 py-2 font-mono text-[12.5px] leading-relaxed text-brand-ink">
-      <code>{code}</code>
-    </pre>
-  )
-}
-
-function StreamingTextTable({ children }: { children?: ReactNode }) {
-  return (
-    <div className="my-2 overflow-x-auto rounded-md border border-brand-rule/40">
-      <table className="m-0 w-full border-collapse text-[13.5px]">
-        {children}
-      </table>
-    </div>
-  )
-}
-
-const STREAMING_MARKDOWN_COMPONENTS = {
-  code: StreamingTextCodeBlock,
-  table: StreamingTextTable,
-} as const
-
-// ---------------------------------------------------------------------------
-// FrozenMarkdown — already-closed markdown that won't re-render
-// ---------------------------------------------------------------------------
-const FrozenMarkdown = memo(function FrozenMarkdown({
-  text,
-}: {
-  text: string
-}) {
-  return (
-    <Markdown
-      remarkPlugins={[remarkGfm]}
-      components={STREAMING_MARKDOWN_COMPONENTS}
-    >
-      {text}
-    </Markdown>
-  )
-})
-
-// ---------------------------------------------------------------------------
-// StreamingText — VS Code-style progressive markdown. Frozen + live split.
-// Sets `.streaming-live` on the live tail so the CSS caret rides at the
-// end of the last child block.
+// StreamingText — unified progressive markdown using official AI SDK Streamdown.
+// Eliminates DOM destruction, list breaks, and layout jumps during streaming.
 // ---------------------------------------------------------------------------
 const StreamingText = memo(function StreamingText({
   text,
@@ -220,23 +145,6 @@ const StreamingText = memo(function StreamingText({
   text: string
   isStreaming: boolean
 }) {
-  const { frozen, live, liveRender } = useMemo(() => {
-    if (!text) return { frozen: "", live: "", liveRender: "" }
-    if (!isStreaming) return { frozen: text, live: "", liveRender: "" }
-    const fenceCount = (text.match(/^```/gm) ?? []).length
-    const insideFence = fenceCount % 2 === 1
-    if (insideFence) {
-      return { frozen: "", live: text, liveRender: `${text}\n\`\`\`` }
-    }
-    const lastBreak = text.lastIndexOf("\n\n")
-    if (lastBreak === -1) return { frozen: "", live: text, liveRender: text }
-    return {
-      frozen: text.slice(0, lastBreak + 2),
-      live: text.slice(lastBreak + 2),
-      liveRender: text.slice(lastBreak + 2),
-    }
-  }, [text, isStreaming])
-
   const tableData = useMemo(() => {
     if (isStreaming) return null
     const tableMatch = text.match(
@@ -266,36 +174,29 @@ const StreamingText = memo(function StreamingText({
   if (tableData) {
     return (
       <div className={prose}>
-        {tableData.beforeTable && <FrozenMarkdown text={tableData.beforeTable} />}
+        {tableData.beforeTable && (
+          <MessageResponse>{tableData.beforeTable}</MessageResponse>
+        )}
         <DataTable
           headers={tableData.parsed.headers}
           rows={tableData.parsed.rows}
           className="my-2"
         />
         {tableData.afterTable.trim() && (
-          <FrozenMarkdown text={tableData.afterTable} />
+          <MessageResponse>{tableData.afterTable}</MessageResponse>
         )}
       </div>
     )
   }
 
   return (
-    <div className={prose}>
-      {frozen && <FrozenMarkdown text={frozen} />}
-      {live && (
-        // .streaming-live enables the .streaming-live > :last-child:not(pre)::after
-        // rule from globals.css — that paints the blinking caret at the tail.
-        <div className={cn(isStreaming && "streaming-live")}>
-          <LiveBlockContext.Provider value={isStreaming}>
-            <Markdown
-              remarkPlugins={[remarkGfm]}
-              components={STREAMING_MARKDOWN_COMPONENTS}
-            >
-              {liveRender}
-            </Markdown>
-          </LiveBlockContext.Provider>
-        </div>
-      )}
+    <div className={cn(prose, isStreaming && "streaming-live")}>
+      <MessageResponse
+        mode={isStreaming ? "streaming" : "static"}
+        isAnimating={isStreaming}
+      >
+        {text}
+      </MessageResponse>
     </div>
   )
 })
@@ -347,23 +248,23 @@ function ReasoningBlock({
 }
 
 // ---------------------------------------------------------------------------
-// ThinkingRun + segment grouping (same algorithm as AI-Agent)
+// ThinkingRun + segment grouping with stable keys
 // ---------------------------------------------------------------------------
 type ThinkingRunSegment =
-  | { kind: "reasoning"; events: ReasoningPartEvent[] }
-  | { kind: "tools"; tools: ToolCallEvent[] }
+  | { id: string; kind: "reasoning"; events: ReasoningPartEvent[] }
+  | { id: string; kind: "tools"; tools: ToolCallEvent[] }
 
 type RenderSegment =
   | ThinkingRunSegment
-  | { kind: "text"; events: TextDeltaEvent[] }
-  | { kind: "sources"; urls: SourceUrlEvent[] }
-  | { kind: "progress"; ev: ProgressEvent }
-  | { kind: "warning"; ev: WarningEvent }
-  | { kind: "stream-error"; ev: StreamErrorEvent }
+  | { id: string; kind: "text"; events: TextDeltaEvent[] }
+  | { id: string; kind: "sources"; urls: SourceUrlEvent[] }
+  | { id: string; kind: "progress"; ev: ProgressEvent }
+  | { id: string; kind: "warning"; ev: WarningEvent }
+  | { id: string; kind: "stream-error"; ev: StreamErrorEvent }
 
 type RenderGroup =
   | RenderSegment
-  | { kind: "thinking-run"; segments: ThinkingRunSegment[] }
+  | { id: string; kind: "thinking-run"; segments: ThinkingRunSegment[] }
 
 function isThinkingRunSegment(seg: RenderSegment): seg is ThinkingRunSegment {
   return seg.kind === "reasoning" || seg.kind === "tools"
@@ -373,32 +274,49 @@ function groupThinkingRuns(segments: RenderSegment[]): RenderGroup[] {
   const groups: RenderGroup[] = []
   let current: ThinkingRunSegment[] = []
   let pendingText: TextDeltaEvent[] = []
+  let pendingTextId = ""
+
+  const flushThinking = () => {
+    if (current.length) {
+      groups.push({
+        id: `thinking-${current[0].id}`,
+        kind: "thinking-run",
+        segments: current,
+      })
+      current = []
+    }
+  }
+
+  const flushText = () => {
+    if (pendingText.length) {
+      groups.push({
+        id: pendingTextId || `text-${groups.length}`,
+        kind: "text",
+        events: pendingText,
+      })
+      pendingText = []
+      pendingTextId = ""
+    }
+  }
 
   for (const seg of segments) {
     if (seg.kind === "text") {
+      flushThinking()
+      if (!pendingTextId) pendingTextId = seg.id
       pendingText.push(...seg.events)
       continue
     }
     if (isThinkingRunSegment(seg)) {
+      flushText()
       current.push(seg)
       continue
     }
-    if (current.length) {
-      groups.push({ kind: "thinking-run", segments: current })
-      current = []
-    }
-    if (pendingText.length) {
-      groups.push({ kind: "text", events: pendingText })
-      pendingText = []
-    }
+    flushThinking()
+    flushText()
     groups.push(seg)
   }
-  if (current.length) {
-    groups.push({ kind: "thinking-run", segments: current })
-  }
-  if (pendingText.length) {
-    groups.push({ kind: "text", events: pendingText })
-  }
+  flushThinking()
+  flushText()
   return groups
 }
 

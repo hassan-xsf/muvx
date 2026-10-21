@@ -371,6 +371,17 @@ class SoundEngine {
     osc.start(ctx.currentTime)
     osc.stop(ctx.currentTime + 0.04)
   }
+
+  // Convenience aliases for intuitive micro-interaction calling
+  public pop(volume?: number) { this.playPop(volume) }
+  public click(volume?: number) { this.playClick(volume) }
+  public typing(volume?: number) { this.playKeypress(volume) }
+  public success(volume?: number) { this.playSuccess(volume) }
+  public toggle(checked: boolean, volume?: number) { this.playToggle(checked, volume) }
+  public pulse(volume?: number) { this.playPulse(volume) }
+  public confirm(volume?: number) { this.playConfirm(volume) }
+  public warning(volume?: number) { this.playWarning(volume) }
+  public bell(volume?: number) { this.playBell(volume) }
 }
 
 export const sounds = new SoundEngine()
