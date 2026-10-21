@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "./landing-utils"
+import { MuvxLogo } from "@/components/brand/muvx-logo"
 import {
   SquarePen,
   Award,
@@ -84,10 +85,8 @@ export default function Navbar() {
     <header className="relative z-40 w-full bg-[#fbf8f3]">
       <div className="mx-auto flex max-w-[1440px] items-center gap-4 sm:gap-10 px-4 sm:px-6 py-3.5 sm:py-[22px] md:px-16">
         {/* ── Brand ─────────────────────────────────────────────── */}
-        <Link href="/" className="flex shrink-0 items-center">
-          <span className="font-serif text-[26px] sm:text-[30px] font-medium leading-none tracking-[-0.015em] text-[#16181d]">
-            Muvx<span className="text-[#e8602b]">TMS</span>
-          </span>
+        <Link href="/" className="flex shrink-0 items-center transition-opacity hover:opacity-90">
+          <MuvxLogo variant="horizontal" className="h-7 sm:h-8 w-auto" />
         </Link>
 
         {/* ── Nav links (hidden on mobile) ──────────────────────── */}

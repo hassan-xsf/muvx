@@ -19,6 +19,7 @@ import {
   type Goal,
 } from "@/lib/stores/onboarding-store"
 import { ROLE_CATALOG } from "@/lib/auth-roles"
+import { MuvxLogo } from "@/components/brand/muvx-logo"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -464,10 +465,8 @@ function OnboardingContent() {
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-[920px] flex-col px-6 py-12 md:px-16">
         {/* Top bar */}
         <div className="flex items-center justify-between">
-          <a href="/" className="flex items-center">
-            <span className="font-serif text-[30px] font-medium leading-none tracking-[-0.015em]" style={{ color: "#16181d" }}>
-              Muvx<span style={{ color: "#e8602b" }}>TMS</span>
-            </span>
+          <a href="/" className="flex items-center transition-opacity hover:opacity-90">
+            <MuvxLogo variant="horizontal" className="h-8 w-auto" />
           </a>
           <span className="font-geist-mono text-[11px] uppercase tracking-[0.04em]" style={{ color: "#8a8b8f" }}>
             Setup · {currentStep + 1} of {totalSteps}

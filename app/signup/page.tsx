@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
+import { MuvxLogo } from "@/components/brand/muvx-logo"
 import { authClient } from "@/lib/auth-client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -151,10 +152,8 @@ function SignupContent() {
       {/* Top bar */}
       <header className="w-full bg-[#fbf8f3]">
         <div className="mx-auto flex max-w-[1440px] items-center gap-10 px-6 py-[22px] md:px-16">
-          <Link href="/" className="flex items-center">
-            <span className="font-serif text-[30px] font-medium leading-none tracking-[-0.015em] text-brand-ink">
-              Muvx<span className="text-[#e8602b]">TMS</span>
-            </span>
+          <Link href="/" className="flex items-center transition-opacity hover:opacity-90">
+            <MuvxLogo variant="horizontal" className="h-8 w-auto" />
           </Link>
           <div className="ml-auto flex items-center gap-6">
             <span className="hidden sm:block font-geist-mono text-[10px] font-medium tracking-[0.04em] text-brand-muted-soft">

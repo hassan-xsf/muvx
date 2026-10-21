@@ -1,3 +1,5 @@
+import { MuvxLogo } from "@/components/brand/muvx-logo";
+
 /* ─────────────────────────────────────────────────────────────────────────────
  * Footer
  * ───────────────────────────────────────────────────────────────────────────── */
@@ -19,7 +21,7 @@ export default function Footer() {
       <div className="flex flex-col gap-10 lg:flex-row lg:gap-12">
         {/* Brand */}
         <div className="min-w-[200px] lg:flex-1">
-          <p className="font-serif text-[30px] sm:text-[34px] text-[#16181d]">Muvx</p>
+          <MuvxLogo variant="horizontal" className="h-8 sm:h-9 w-auto" />
           <p className="mt-3 max-w-[280px] font-geist text-sm leading-[21px] text-[#4a4e57]">
             The AI-native TMS for brokers, carriers and 3PLs.
           </p>

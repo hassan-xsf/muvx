@@ -3,6 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { MuvxLogoMark } from "@/components/brand/muvx-logo"
 import { useQuery } from "@tanstack/react-query"
 import { authClient } from "@/lib/auth-client"
 import {
@@ -126,8 +127,8 @@ export function AppSidebarPermission({
               tooltip="Muvx TMS"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <div className="flex aspect-square size-8 items-center justify-center rounded-md bg-brand-ink text-brand-cream shrink-0">
-                <span className="font-serif text-base font-medium">M</span>
+              <div className="flex aspect-square size-8 items-center justify-center rounded-md bg-[#16181d] text-white shrink-0 p-1.5 shadow-sm">
+                <MuvxLogoMark className="size-full text-white" />
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-serif text-[18px] font-semibold tracking-tight text-brand-ink">
