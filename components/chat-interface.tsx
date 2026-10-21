@@ -447,52 +447,32 @@ function renderMessageParts(
   onSendMessage?: (text: string) => void,
   botCoat: BotCoat = "ink",
   /**
-   * True only while this exact message is the one currently streaming. Drives
-   * the live "Thinking…" shimmer; once the run finishes the step keeps its
-   * label and stops animating.
+   * True only while this exact message is the one currently streaming.
    */
   isLive: boolean = false
 ): React.ReactNode {
   const parts = message.parts;
   const out: React.ReactNode[] = [];
-  let cotBuffer: UIMessage["parts"][number][] = [];
-
-  const flushCot = (anchorIndex: number) => {
-    if (cotBuffer.length === 0) return;
-    const steps = cotBuffer.map((p, i) =>
-      renderPart(message, p, anchorIndex + i, respondToApproval, onSendMessage, botCoat)
-    );
-    out.push(
-      <ChainOfThought
-        key={`${message.id}-cot-group-${anchorIndex}`}
-        defaultOpen
-        className="my-3 rounded-xl border border-brand-rule/40 bg-brand-cream/20 px-3.5 py-2.5"
-      >
-        <ChainOfThoughtHeader headerIcon={null}>
-          <span className="flex items-center gap-2 text-[13px] font-medium text-brand-muted">
-            <Cpu className="size-3.5 text-brand-accent/70" />
-            Working through it
-          </span>
-        </ChainOfThoughtHeader>
-        <ChainOfThoughtContent className="mt-1">{steps}</ChainOfThoughtContent>
-      </ChainOfThought>
-    );
-    cotBuffer = [];
-  };
 
   parts.forEach((part, i) => {
+    // Skip "Working through it" CoT data parts and "Reasoned through the request" thinking blocks
     if (isDataUIPart(part) && part.type === "data-cot-step") {
-      cotBuffer.push(part);
       return;
     }
-    flushCot(i);
-    out.push(
-      <Fragment key={`${message.id}-p-${i}`}>
-        {renderPart(message, part, i, respondToApproval, onSendMessage, botCoat)}
-      </Fragment>
-    );
+    if (isReasoningUIPart(part)) {
+      return;
+    }
+
+    const rendered = renderPart(message, part, i, respondToApproval, onSendMessage, botCoat);
+    if (rendered !== null && rendered !== undefined) {
+      out.push(
+        <Fragment key={`${message.id}-p-${i}`}>
+          {rendered}
+        </Fragment>
+      );
+    }
   });
-  flushCot(parts.length);
+
   return out;
 }
 
@@ -517,97 +497,9 @@ function renderPart(
     );
   }
 
-  if (isReasoningUIPart(part)) {
-    const isStreaming = part.state === "streaming";
-    return (
-      <ChainOfThought
-        key={`${message.id}-reasoning-${index}`}
-        defaultOpen={isStreaming}
-        className="my-3 rounded-xl border border-brand-rule/40 bg-brand-cream/20 px-3.5 py-2.5"
-      >
-        <ChainOfThoughtHeader headerIcon={null}>
-          <span className="flex items-center gap-2 text-[13px] font-medium text-brand-muted">
-            {isStreaming ? (
-              <>
-                <Brain className="size-3.5 animate-pulse text-brand-accent" />
-                <Shimmer duration={1.4}>Reasoning…</Shimmer>
-              </>
-            ) : (
-              <>
-                <Brain className="size-3.5 text-brand-muted-soft" />
-                Reasoned through the request
-              </>
-            )}
-          </span>
-        </ChainOfThoughtHeader>
-        <ChainOfThoughtContent>
-          <div className="mt-1 border-l-2 border-brand-rule/50 pl-3 text-[13px] leading-relaxed text-brand-muted whitespace-pre-wrap">
-            {part.text}
-          </div>
-        </ChainOfThoughtContent>
-      </ChainOfThought>
-    );
-  }
-
-  // Structured Chain-of-Thought data parts emitted by /api/chat route. Each
-  // tool invocation lands here as a typed step (icon + label + status).
-  // The renderer below is used both standalone and by the group renderer
-  // when consecutive cot steps share the same parent message.
-  if (isDataUIPart(part) && part.type === "data-cot-step") {
-    const cot = part.data as {
-      id?: string;
-      toolName?: string;
-      icon?: string;
-      label?: string;
-      description?: string;
-      status?: "active" | "complete" | "pending";
-      summary?: string[];
-      error?: string;
-    };
-    const Icon = resolveCotIcon(cot.icon);
-    const isPlaceholder = !cot.label?.trim();
-    const status = cot.status ?? "complete";
-    const isError = !!cot.error;
-    return (
-      <ChainOfThoughtStep
-        key={cot.id ?? `${message.id}-cot-${index}`}
-        icon={Icon}
-        status={status}
-        label={
-          <span className={cn(
-            "text-[13px] font-medium",
-            status === "active" && "text-brand-ink",
-            status === "complete" && !isError && "text-brand-muted",
-            isError && "text-destructive"
-          )}>
-            {isPlaceholder && status === "active" ? (
-              <Shimmer duration={1.4}>Analyzing…</Shimmer>
-            ) : isPlaceholder ? (
-              "Completed analysis"
-            ) : (
-              cot.label
-            )}
-          </span>
-        }
-        description={
-          cot.error ? (
-            <span className="text-destructive/80 text-xs">{cot.error}</span>
-          ) : cot.description ? (
-            <span className="text-brand-muted-soft text-xs">{cot.description}</span>
-          ) : undefined
-        }
-      >
-        {Array.isArray(cot.summary) && cot.summary.length > 0 && (
-          <ChainOfThoughtSearchResults className="mt-1.5">
-            {cot.summary.map((s, i) => (
-              <ChainOfThoughtSearchResult key={`${cot.id ?? index}-s-${i}`}>
-                {s}
-              </ChainOfThoughtSearchResult>
-            ))}
-          </ChainOfThoughtSearchResults>
-        )}
-      </ChainOfThoughtStep>
-    );
+  // Reasoning / CoT steps omitted per design preference
+  if (isReasoningUIPart(part) || (isDataUIPart(part) && part.type === "data-cot-step")) {
+    return null;
   }
 
   if (isFileUIPart(part)) {
@@ -2478,40 +2370,6 @@ export default function ChatInterface() {
                 </Message>
               );
             })}
-
-            {/* Turn indicator — displayed while waiting for assistant output without loud orange text */}
-            {(status === "submitted" ||
-              (status === "streaming" &&
-                !messages[messages.length - 1]?.parts.some(
-                  (p) =>
-                    isTextUIPart(p) ||
-                    isToolUIPart(p) ||
-                    (isDataUIPart(p) && p.type === "data-cot-step")
-                ))) && (
-              <Message from="assistant" className="gap-1.5">
-                <div className="flex items-center gap-2 mb-0.5 select-none">
-                  <MuvxBot
-                    size="xs"
-                    coat={botCoat}
-                    mood={copilotMood}
-                    showDots
-                    isActive
-                  />
-                </div>
-                <MessageContent>
-                  <div className="flex items-center gap-2.5 py-1">
-                    <div className="flex gap-1">
-                      <span className="size-1.5 rounded-full bg-brand-muted/60 animate-bounce [animation-delay:0ms]" />
-                      <span className="size-1.5 rounded-full bg-brand-muted/60 animate-bounce [animation-delay:150ms]" />
-                      <span className="size-1.5 rounded-full bg-brand-muted/60 animate-bounce [animation-delay:300ms]" />
-                    </div>
-                    <span className="text-[13px] text-brand-muted">
-                      Thinking…
-                    </span>
-                  </div>
-                </MessageContent>
-              </Message>
-            )}
           </ConversationContent>
           <ConversationScrollButton />
       </Conversation>
