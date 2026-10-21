@@ -3,6 +3,14 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "./landing-utils"
+import { Instrument_Serif } from "next/font/google"
+
+const instrumentSerif = Instrument_Serif({
+  weight: "400",
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+})
+
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * Eyebrow
@@ -143,7 +151,7 @@ export default function Hero() {
           {/* ──────────────────────────────────────────────────────────────
            * Left content
            * ────────────────────────────────────────────────────────────── */}
-          <div className="relative z-20 max-w-[760px] pt-1 lg:pt-[20px]">
+          <div className={` ${instrumentSerif.className} relative z-20 max-w-[760px] pt-1 lg:pt-[20px]`}>
             <h1 className="max-w-[760px] font-serif font-normal text-[clamp(56px,7.2vw,104px)] leading-[0.92] tracking-[-0.045em] text-[#16181d]">
               <span className="block ">The TMS built for</span>
 
