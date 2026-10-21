@@ -133,7 +133,6 @@ import {
   describePart,
 } from "@/lib/copilot/client-trace";
 import { Shimmer } from "@/components/ai-elements/shimmer";
-import { Suggestions, Suggestion } from "@/components/ai-elements/suggestion";
 import {
   StreamingAssistantMessage,
   fromUIMessage,
@@ -244,25 +243,7 @@ export const SPECIALIST_TEAMS: BotSpecialist[] = [
   },
 ];
 
-/** Shown on an empty chat. Mirrors the server's static fallback list. */
-const STARTER_SUGGESTIONS = [
-  {
-    title: "Show today's active loads",
-    prompt: "Show me all loads active today with their current status.",
-  },
-  {
-    title: "Audit missing PODs",
-    prompt: "Find delivered loads from the last 7 days that are still missing a signed POD.",
-  },
-  {
-    title: "Fleet availability",
-    prompt: "Which tractors and drivers are available for dispatch right now?",
-  },
-  {
-    title: "Overdue AR",
-    prompt: "Show me the oldest overdue customer invoices and their aging balances.",
-  },
-];
+
 
 function CopyButton({ message }: { message: UIMessage }) {
   const [copied, setCopied] = useState(false);
@@ -2131,7 +2112,7 @@ export default function ChatInterface() {
   const [allowAll, setAllowAll] = useState(true); // Fully autonomous — no approval gates
   const [recentFinish, setRecentFinish] = useState(false);
 
-  const { messages, setMessages, sendMessage, status, error } = useChat({
+  const { messages, setMessages, sendMessage, status, error, stop } = useChat({
     id: "ai-chat",
   });
 
@@ -2226,51 +2207,7 @@ export default function ChatInterface() {
     });
   }, [messages]);
 
-  // ── Context-aware suggestions ────────────────────────────────────────
-  // Suggestions are generated server-side from the actual conversation so they
-  // follow what was just discussed rather than a fixed list. Re-fetched once
-  // the chat goes ready; the starter list covers the empty state.
-  const [adaptiveSuggestions, setAdaptiveSuggestions] = useState<
-    { title: string; prompt: string }[]
-  >(STARTER_SUGGESTIONS);
 
-  useEffect(() => {
-    if (status !== "ready" || messages.length === 0) return;
-
-    const transcript = messages
-      .slice(-8)
-      .map((m) => {
-        const text = m.parts
-          .filter(isTextUIPart)
-          .map((p) => p.text)
-          .join(" ")
-          .trim();
-        return text ? `${m.role}: ${text}` : "";
-      })
-      .filter(Boolean)
-      .join("\n");
-
-    if (transcript.length < 20) return;
-
-    const controller = new AbortController();
-    fetch("/api/copilot/suggestions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ transcript, role: "main", model: selectedModel }),
-      signal: controller.signal,
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (Array.isArray(data?.suggestions) && data.suggestions.length > 0) {
-          setAdaptiveSuggestions(data.suggestions);
-        }
-      })
-      .catch(() => {
-        // Suggestions are best-effort; keep whatever is on screen.
-      });
-
-    return () => controller.abort();
-  }, [status, messages, selectedModel]);
 
   // Calculate real-time dynamic bot mood
   const isAnyToolRunning = messages.some((m) =>
@@ -2378,11 +2315,6 @@ export default function ChatInterface() {
     endSend();
   };
 
-  const handleFiles = (files: File[]) =>
-    sendWithProvider("", { webSearch: false, model: selectedModel, files });
-
-  const emptyStateSuggestions = STARTER_SUGGESTIONS;
-
   if (messages.length === 0) {
     return (
       <div className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden bg-[#f7f3ec]">
@@ -2405,10 +2337,7 @@ export default function ChatInterface() {
             </div>
           )}
 
-          {/* Small decorative orb. Gemini keeps the headline + input as the
-              dual focal points; the agent orb here is a quiet accent, not a
-              billboard. A tiny animated coat halo sells "alive" without
-              stealing attention. */}
+          {/* Small decorative orb */}
           <div className="relative mb-3">
             <MuvxBot
               size="sm"
@@ -2419,64 +2348,60 @@ export default function ChatInterface() {
             />
           </div>
 
-          {/* Hero headline — single, clean line. No eyebrow, no decorative
-              subtitle; the input below carries the affordance, and excess
-              chrome around it dilutes the focus. */}
-          <h1 className="font-serif text-[clamp(28px,4vw,40px)] leading-[1.1] tracking-tight text-brand-ink text-center">
-            What should <span className="italic text-brand-accent">Muvx</span> handle next?
+          {/* Hero headline — Gemini style: Where should we start? */}
+          <h1 className="font-serif text-[clamp(28px,4vw,38px)] leading-[1.15] tracking-tight text-brand-ink text-center">
+            Where should we start?
           </h1>
 
-          {/* Hero input — the focal point. The AI_Input_Search component
-              already renders the model picker inline on the right edge; we
-              leave it as-is so the affordance matches the rest of the app. */}
+          {/* Hero input — pure custom Gemini-style capsule */}
           <div className="mt-7 w-full">
             <AI_Input_Search
               models={availableModels}
               selectedModel={selectedModel}
               onModelChange={setSelectedModel}
               onSubmit={sendWithProvider}
-              onFilesSelected={handleFiles}
-              placeholder="Ask Muvx anything — loads, rates, drivers, invoices, or attach a document…"
-              searchLabel="Web Search"
+              isLoading={status === "submitted" || status === "streaming"}
+              onStop={stop}
+              placeholder="Ask Muvx anything…"
             />
           </div>
 
-          {/* Whisper-quiet suggestions — icon + plain text rows below the
-              input, echoing the Gemini "small hints" pattern. No card chrome,
-              no button backgrounds; they read as flavor, not as competitors
-              to the input above. */}
-          <div className="mt-8 w-full">
-            <ul className="flex flex-col gap-1">
-              {emptyStateSuggestions.map((item, idx) => {
-                const Icon =
-                  idx === 0 ? Truck
-                  : idx === 1 ? FileWarning
-                  : idx === 2 ? Users
-                  : CircleDollarSign
-                return (
-                  <li key={`${item.title}-${idx}`}>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        sendWithProvider(item.prompt, {
-                          webSearch: false,
-                          model: selectedModel,
-                        })
-                      }
-                      className="group flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-brand-cream-soft"
-                    >
-                      <Icon
-                        className="size-3.5 shrink-0 text-brand-muted-soft group-hover:text-brand-accent"
-                        strokeWidth={1.8}
-                      />
-                      <span className="text-[13px] text-brand-muted group-hover:text-brand-ink">
-                        {item.title}
-                      </span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
+          {/* Gemini-style whisper starter prompts below input */}
+          <div className="mt-7 flex w-full max-w-xl flex-col gap-2">
+            {[
+              {
+                icon: Truck,
+                text: "Show active loads and current transit status",
+                prompt: "Show me all loads active today with their current status.",
+              },
+              {
+                icon: FileText,
+                text: "Audit delivered loads missing signed POD documents",
+                prompt: "Find delivered loads from the last 7 days that are still missing a signed POD.",
+              },
+              {
+                icon: Users,
+                text: "Check tractor and driver availability for dispatch",
+                prompt: "Which tractors and drivers are available for dispatch right now?",
+              },
+            ].map((hint, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() =>
+                  sendWithProvider(hint.prompt, {
+                    webSearch: false,
+                    model: selectedModel,
+                  })
+                }
+                className="group flex items-center gap-3 rounded-2xl border border-brand-rule/60 bg-brand-card/70 px-4 py-2.5 text-left transition-all hover:border-brand-accent/40 hover:bg-brand-card"
+              >
+                <hint.icon className="size-4 shrink-0 text-brand-muted-soft transition-colors group-hover:text-brand-accent" />
+                <span className="text-[13px] font-medium text-brand-ink/80 transition-colors group-hover:text-brand-ink">
+                  {hint.text}
+                </span>
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -2505,7 +2430,19 @@ export default function ChatInterface() {
           auto-scroll. `min-h-0` keeps it shrinkable inside the flex column. */}
       <Conversation className="flex-1 min-h-0">
           <ConversationContent className="max-w-4xl mx-auto w-full px-4 py-4 gap-4">
-            {messages.map((message, mIdx) => {
+            {messages
+              .filter(
+                (m) =>
+                  m.role === "user" ||
+                  (m.role === "assistant" &&
+                    m.parts.some(
+                      (p) =>
+                        (isTextUIPart(p) && p.text.trim().length > 0) ||
+                        isToolUIPart(p) ||
+                        (isDataUIPart(p) && p.type === "data-cot-step")
+                    ))
+              )
+              .map((message, mIdx) => {
               const isLastMessage = mIdx === messages.length - 1;
               const isAssistant = message.role === "assistant";
               const rowMood: BotMood = isLastMessage ? copilotMood : "idle";
@@ -2545,7 +2482,7 @@ export default function ChatInterface() {
                       )
                     )}
                   </MessageContent>
-                  {isAssistant && (
+                  {isAssistant && message.parts.some((p) => isTextUIPart(p) && p.text.trim().length > 0) && (
                     <MessageToolbar>
                       <MessageActions>
                         <CopyButton message={message} />
@@ -2579,17 +2516,19 @@ export default function ChatInterface() {
                     />
                   </div>
                   <MessageContent>
-                    <div className="flex items-center gap-2.5 py-1">
-                      <div className="flex gap-1">
-                        <span className="size-1.5 rounded-full bg-brand-accent/60 animate-bounce [animation-delay:0ms]" />
-                        <span className="size-1.5 rounded-full bg-brand-accent/60 animate-bounce [animation-delay:150ms]" />
-                        <span className="size-1.5 rounded-full bg-brand-accent/60 animate-bounce [animation-delay:300ms]" />
+                    <div className="flex items-center gap-2.5 py-1.5 px-1">
+                      <div className="flex gap-1.5 items-center">
+                        <span className="size-2 rounded-full bg-brand-accent/70 animate-pulse [animation-delay:0ms]" />
+                        <span className="size-2 rounded-full bg-brand-accent/70 animate-pulse [animation-delay:150ms]" />
+                        <span className="size-2 rounded-full bg-brand-accent/70 animate-pulse [animation-delay:300ms]" />
                       </div>
-                      <span className="text-[13px] text-brand-muted">
+                      <Shimmer duration={1.6} className="text-[13px] font-medium text-brand-accent">
                         {status === "submitted"
-                          ? "Connecting…"
-                          : "Thinking…"}
-                      </span>
+                          ? "Connecting to Muvx Brain…"
+                          : isAnyToolRunning
+                            ? "Searching live operational data…"
+                            : "Thinking through freight records…"}
+                      </Shimmer>
                     </div>
                   </MessageContent>
                 </Message>
@@ -2597,22 +2536,6 @@ export default function ChatInterface() {
           </ConversationContent>
           <ConversationScrollButton />
       </Conversation>
-
-      {/* Active turn contextual suggestions */}
-      {status === "ready" && adaptiveSuggestions.length > 0 && (
-        <div className="px-4 py-2 max-w-4xl mx-auto w-full">
-          <Suggestions className="flex-wrap gap-2">
-            {adaptiveSuggestions.map((item, idx) => (
-              <Suggestion
-                key={`${item.title}-${idx}`}
-                suggestion={item.title}
-                onClick={() => sendWithProvider(item.prompt, { webSearch: false, model: selectedModel })}
-                className="rounded-lg border-brand-rule bg-brand-card/80 text-brand-muted hover:border-brand-accent/40 hover:text-brand-ink hover:bg-brand-cream/50 shadow-2xs text-[13px] px-3 py-1.5"
-              />
-            ))}
-          </Suggestions>
-        </div>
-      )}
 
       {/* Upload feedback — the browser pushes bytes straight to S3, so surface
           progress and any storage rejection above the input bar. */}
@@ -2640,19 +2563,16 @@ export default function ChatInterface() {
         </div>
       )}
 
-      {/* Input bar at bottom with file attachment and web search */}
+      {/* Input bar at bottom with file attachment */}
       <div className="p-3 sm:p-4 max-w-4xl mx-auto w-full shrink-0">
-        {/* Context window meter — reads token usage the server attaches via
-            messageMetadata and renders a ring + cost breakdown on hover. */}
-        <TokenContextMeter messages={messages} />
         <AI_Input_Search
           models={availableModels}
           selectedModel={selectedModel}
           onModelChange={setSelectedModel}
           onSubmit={sendWithProvider}
-          onFilesSelected={handleFiles}
-          placeholder="Message Muvx Copilot..."
-          searchLabel="Web Search"
+          isLoading={status === "submitted" || status === "streaming"}
+          onStop={stop}
+          placeholder="Ask Muvx anything…"
         />
       </div>
     </div>

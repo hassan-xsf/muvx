@@ -216,10 +216,11 @@ export function fromUIMessage(message: UIMessage, isStreaming: boolean): Streami
         if (s === "output-error") return "tool-call-output-error";
         return "tool-call-start";
       };
+      const toolCallId = toolPart.toolCallId || `${message.id}-call-${idx}`;
       parts.push({
-        id: nid("tool"),
+        id: `${message.id}-tool-${toolCallId}`,
         type: mapType(toolPart.state),
-        toolCallId: toolPart.toolCallId ?? nid("call"),
+        toolCallId,
         toolName,
         state: mapState(toolPart.state),
         args: (toolPart.input as Record<string, unknown>) ?? {},
@@ -237,12 +238,13 @@ export function fromUIMessage(message: UIMessage, isStreaming: boolean): Streami
       // We forward `data-cot-step` chains as progress so the CoT UI keeps
       // the live shimmer alive even after the assistant message ends.
       if (part.type === "data-cot-step") {
-        const data = (part as { data?: unknown }).data as
-          | { label?: string; description?: string; status?: "active" | "complete" | "pending"; error?: string }
+        const data = (part as { data?: unknown; id?: string }).data as
+          | { id?: string; label?: string; description?: string; status?: "active" | "complete" | "pending"; error?: string }
           | undefined;
+        const progressId = data?.id || (part as any).id || `${message.id}-progress-${idx}`;
         const status = data?.status ?? "complete";
         parts.push({
-          id: nid("progress"),
+          id: progressId,
           type: "progress",
           label: data?.label?.trim() || data?.description?.trim() || "Working",
           status: status === "active" ? "loading" : status === "pending" ? "loading" : "complete",

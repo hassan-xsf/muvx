@@ -23,8 +23,8 @@ import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3"
  *   uploads/{workspaceId}/{filename}    — ad-hoc uploads
  */
 
-const bucket = process.env.MUVX_AWS_BUCKET
-const region = process.env.MUVX_AWS_REGION ?? "us-east-1"
+export const bucket = process.env.MUVX_AWS_BUCKET
+export const region = process.env.MUVX_AWS_REGION ?? "us-east-1"
 
 /**
  * Whether S3 storage is configured. Returns false in local dev when
@@ -39,7 +39,7 @@ export const s3Configured = !!bucket
  * at call time and throw a clear error.
  */
 const _s3Clients = new Map<string, S3Client>()
-function getS3(
+export function getS3(
   clientRegion = region,
   bucketName: string | undefined = bucket,
 ): S3Client {
