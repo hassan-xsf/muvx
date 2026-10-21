@@ -18,11 +18,37 @@ interface IntegrationDetailClientProps {
   platformId: string
 }
 
+const STORAGE_KEY = "muvx_connected_platforms_v2"
+
 export function IntegrationDetailClient({ platformId }: IntegrationDetailClientProps) {
   const router = useRouter()
   const initialPlatform = PLATFORMS_CATALOG.find((p) => p.id === platformId)
   const [platform, setPlatform] = React.useState(initialPlatform)
   const [isSyncing, setIsSyncing] = React.useState(false)
+
+  // ── Sync with localStorage on client mount ─────────────────────
+  React.useEffect(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY)
+      if (stored && initialPlatform) {
+        const connectedIds: string[] = JSON.parse(stored)
+        if (Array.isArray(connectedIds) && connectedIds.includes(platformId)) {
+          setPlatform((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  status: "connected",
+                  connectedAt: "Active tenant connection",
+                  lastSync: "Streaming live",
+                }
+              : prev
+          )
+        }
+      }
+    } catch (e) {
+      console.warn("Could not read connected platform from localStorage:", e)
+    }
+  }, [platformId, initialPlatform])
 
   if (!platform) {
     return (
@@ -43,7 +69,32 @@ export function IntegrationDetailClient({ platformId }: IntegrationDetailClientP
 
   const handleToggleStatus = () => {
     const nextStatus = platform.status === "connected" ? "available" : "connected"
-    setPlatform((prev) => (prev ? { ...prev, status: nextStatus } : prev))
+    setPlatform((prev) =>
+      prev
+        ? {
+            ...prev,
+            status: nextStatus,
+            connectedAt: nextStatus === "connected" ? "Today, just now" : undefined,
+            lastSync: nextStatus === "connected" ? "Streaming live" : undefined,
+          }
+        : prev
+    )
+
+    // Persist to localStorage
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY)
+      let ids: string[] = stored ? JSON.parse(stored) : []
+      if (!Array.isArray(ids)) ids = []
+      if (nextStatus === "connected") {
+        if (!ids.includes(platformId)) ids.push(platformId)
+      } else {
+        ids = ids.filter((id) => id !== platformId)
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(ids))
+    } catch (e) {
+      console.warn("Failed to write to localStorage:", e)
+    }
+
     sounds.success()
     toast.success(
       nextStatus === "connected"
@@ -63,7 +114,7 @@ export function IntegrationDetailClient({ platformId }: IntegrationDetailClientP
   }
 
   return (
-    <div className="flex flex-col gap-8 pb-16">
+    <div className="px-4 sm:px-6 lg:px-10 py-6 max-w-7xl mx-auto w-full flex flex-col gap-8 pb-24">
       {/* ── Page Header ───────────────────────────────────────── */}
       <PlatformHeader
         platform={platform}
