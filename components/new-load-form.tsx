@@ -24,7 +24,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import { getAllCountries, getSubdivisions } from "@/lib/geography"
+import { getAllCountries, getSubdivisions, normalizeSubdivisionCode } from "@/lib/geography"
 import { getAllCurrencies } from "@/lib/currencies"
 import {
   type SalesTaxType,
@@ -875,10 +875,16 @@ export function NewLoadForm() {
                   onChange={setOriginAddress}
                   onSelectAddress={(data) => {
                     setOriginAddress(data.address)
+                    if (data.facilityName && !originFacility.trim()) {
+                      setOriginFacility(data.facilityName)
+                    }
                     if (data.city) setOriginCity(data.city)
-                    if (data.state) setOriginState(data.state)
-                    if (data.zip) setOriginZip(data.zip)
+                    const targetCountry = data.country || originCountry || "US"
                     if (data.country) setOriginCountry(data.country)
+                    if (data.state) {
+                      setOriginState(normalizeSubdivisionCode(targetCountry, data.state))
+                    }
+                    if (data.zip) setOriginZip(data.zip)
                   }}
                   placeholder="e.g. 1500 Logistics Parkway"
                 />
@@ -926,7 +932,7 @@ export function NewLoadForm() {
                   {originSubdivisions.length > 0 ? (
                     <select
                       id="originState"
-                      value={originState}
+                      value={originState ? normalizeSubdivisionCode(originCountry, originState) : ""}
                       onChange={(e) => setOriginState(e.target.value)}
                       className="input-base"
                     >
@@ -1055,10 +1061,16 @@ export function NewLoadForm() {
                   onChange={setDestAddress}
                   onSelectAddress={(data) => {
                     setDestAddress(data.address)
+                    if (data.facilityName && !destFacility.trim()) {
+                      setDestFacility(data.facilityName)
+                    }
                     if (data.city) setDestCity(data.city)
-                    if (data.state) setDestState(data.state)
-                    if (data.zip) setDestZip(data.zip)
+                    const targetCountry = data.country || destCountry || "US"
                     if (data.country) setDestCountry(data.country)
+                    if (data.state) {
+                      setDestState(normalizeSubdivisionCode(targetCountry, data.state))
+                    }
+                    if (data.zip) setDestZip(data.zip)
                   }}
                   placeholder="e.g. 8400 Horizon Boulevard"
                 />
@@ -1106,7 +1118,7 @@ export function NewLoadForm() {
                   {destSubdivisions.length > 0 ? (
                     <select
                       id="destState"
-                      value={destState}
+                      value={destState ? normalizeSubdivisionCode(destCountry, destState) : ""}
                       onChange={(e) => setDestState(e.target.value)}
                       className="input-base"
                     >

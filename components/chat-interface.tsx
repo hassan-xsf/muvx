@@ -45,6 +45,7 @@ import {
   ChainOfThoughtSearchResults,
   ChainOfThoughtSearchResult,
   ChainOfThoughtContent,
+  ChainOfThoughtItem,
 } from "@/components/ai-elements/chain-of-thought";
 import {
   Reasoning,
@@ -453,14 +454,54 @@ function renderMessageParts(
   const parts = message.parts;
   const out: React.ReactNode[] = [];
 
+  // Collect consecutive data-cot-step parts so we can render them as a
+  // single ChainOfThought block. The server emits one per tool call (plus
+  // a placeholder "thinking" step at the start), so a typical agent turn
+  // produces a chain like: thinking → search → search → book → done.
+  const cotSteps: Array<{
+    index: number
+    data: {
+      id?: string
+      toolName?: string
+      icon?: string
+      label?: string
+      description?: string
+      status?: "active" | "complete" | "pending"
+      summary?: string[]
+    }
+  }> = [];
+
+  const flushCot = () => {
+    if (cotSteps.length === 0) return;
+    out.push(
+      <Fragment key={`${message.id}-cot-${cotSteps[0].index}`}>
+        {renderChainOfThought(cotSteps, isLive)}
+      </Fragment>,
+    );
+    cotSteps.length = 0;
+  };
+
   parts.forEach((part, i) => {
-    // Skip "Working through it" CoT data parts and "Reasoned through the request" thinking blocks
     if (isDataUIPart(part) && part.type === "data-cot-step") {
+      const data = ((part as { data?: unknown }).data ?? {}) as {
+        id?: string
+        toolName?: string
+        icon?: string
+        label?: string
+        description?: string
+        status?: "active" | "complete" | "pending"
+        summary?: string[]
+      };
+      cotSteps.push({ index: i, data });
       return;
     }
+    // Reasoning parts are still hidden — the CoT block carries the same
+    // information in a more structured form.
     if (isReasoningUIPart(part)) {
       return;
     }
+
+    flushCot();
 
     const rendered = renderPart(message, part, i, respondToApproval, onSendMessage, botCoat);
     if (rendered !== null && rendered !== undefined) {
@@ -472,7 +513,94 @@ function renderMessageParts(
     }
   });
 
+  flushCot();
   return out;
+}
+
+/**
+ * Render a collected run of data-cot-step parts as a single ChainOfThought
+ * block. The header shows the active step's label (or "Reasoned through the
+ * request" once everything is complete); each step becomes a ChainOfThoughtStep
+ * with its icon, label, and any summary badges the server attached.
+ */
+function renderChainOfThought(
+  steps: Array<{
+    index: number
+    data: {
+      id?: string
+      toolName?: string
+      icon?: string
+      label?: string
+      description?: string
+      status?: "active" | "complete" | "pending"
+      summary?: string[]
+    }
+  }>,
+  isLive: boolean,
+): React.ReactNode {
+  // Drop the synthetic "thinking" placeholder if real steps followed it —
+  // it adds noise once the model has actually done work.
+  const realSteps = steps.filter(
+    (s) => s.data.toolName && s.data.toolName !== "__thinking__",
+  );
+  const thinkingStep = steps.find(
+    (s) => s.data.toolName === "__thinking__",
+  );
+  const visibleSteps =
+    realSteps.length > 0 ? realSteps : thinkingStep ? [thinkingStep] : [];
+
+  if (visibleSteps.length === 0) return null;
+
+  const lastActive = [...visibleSteps].reverse().find(
+    (s) => s.data.status === "active",
+  );
+  const headerLabel = lastActive?.data.label?.trim()
+    ? lastActive.data.label
+    : isLive
+      ? "Reasoning through the request"
+      : "Reasoned through the request";
+
+  return (
+    <div className="my-2 max-w-2xl">
+      <ChainOfThought defaultOpen={isLive}>
+        <ChainOfThoughtHeader headerIcon={null}>
+          {headerLabel}
+        </ChainOfThoughtHeader>
+        <ChainOfThoughtContent>
+          {visibleSteps.map((step, idx) => {
+            const Icon = resolveCotIcon(step.data.icon);
+            const label = step.data.label?.trim() || "Working";
+            const summary = (step.data.summary ?? []).filter(Boolean);
+            const status =
+              step.data.status === "active"
+                ? "active"
+                : step.data.status === "pending"
+                  ? "pending"
+                  : "complete";
+            return (
+              <ChainOfThoughtStep
+                key={step.data.id ?? `${idx}-${label}`}
+                icon={Icon}
+                label={label}
+                status={status}
+                showConnector={idx < visibleSteps.length - 1}
+              >
+                {summary.length > 0 && (
+                  <ChainOfThoughtSearchResults>
+                    {summary.map((s, sIdx) => (
+                      <ChainOfThoughtSearchResult key={sIdx}>
+                        {s}
+                      </ChainOfThoughtSearchResult>
+                    ))}
+                  </ChainOfThoughtSearchResults>
+                )}
+              </ChainOfThoughtStep>
+            );
+          })}
+        </ChainOfThoughtContent>
+      </ChainOfThought>
+    </div>
+  );
 }
 
 /** Render a single UIMessagePart using the appropriate AI Element component. */
@@ -496,7 +624,10 @@ function renderPart(
     );
   }
 
-  // Reasoning / CoT steps omitted per design preference
+  // Reasoning parts are surfaced through the ChainOfThought block built by
+  // renderMessageParts; CoT data parts are consumed there too. Both are
+  // filtered out before renderPart is called, but keep the guard so a stray
+  // part never leaks through.
   if (isReasoningUIPart(part) || (isDataUIPart(part) && part.type === "data-cot-step")) {
     return null;
   }
@@ -634,40 +765,105 @@ function renderPart(
               </span>
             </div>
 
-            <div className="flex items-center justify-between rounded-lg bg-brand-card p-2.5 border border-brand-rule">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-lg bg-brand-card p-3 border border-brand-rule">
               <div>
-                <div className="text-[9px] text-brand-muted-soft uppercase tracking-wider">
-                  Origin
+                <div className="text-[9px] text-brand-muted-soft uppercase tracking-wider font-semibold">
+                  Pickup (Origin)
                 </div>
-                <div className="font-semibold text-xs text-brand-ink">
-                  {loadData?.originCity ? `${loadData.originCity}, ${loadData.originState || ""}` : loadData?.origin || "Origin"}
+                {loadData?.originFacility && (
+                  <div className="font-semibold text-xs text-brand-ink truncate">
+                    {loadData.originFacility}
+                  </div>
+                )}
+                {loadData?.originAddress && (
+                  <div className="text-[11px] text-brand-muted truncate">
+                    {loadData.originAddress}
+                  </div>
+                )}
+                <div className="text-xs font-medium text-brand-ink">
+                  {loadData?.originCity ? `${loadData.originCity}, ${loadData.originState || ""}${loadData.originZip ? ` ${loadData.originZip}` : ""}` : loadData?.origin || "Origin"}
                 </div>
+                {(loadData?.originAppointment || loadData?.pickupDate) && (
+                  <div className="text-[10px] text-brand-muted-soft font-mono mt-0.5">
+                    📅 {loadData.originAppointment || loadData.pickupDate}
+                  </div>
+                )}
               </div>
-              <ArrowRight className="size-3.5 text-brand-muted-soft" />
-              <div>
-                <div className="text-[9px] text-brand-muted-soft uppercase tracking-wider">
-                  Destination
+
+              <div className="border-t sm:border-t-0 sm:border-l border-brand-rule/60 sm:pl-3 pt-2 sm:pt-0">
+                <div className="text-[9px] text-brand-muted-soft uppercase tracking-wider font-semibold">
+                  Delivery (Destination)
                 </div>
-                <div className="font-semibold text-xs text-brand-ink">
-                  {loadData?.destCity ? `${loadData.destCity}, ${loadData.destState || ""}` : loadData?.destination || "Destination"}
+                {loadData?.destFacility && (
+                  <div className="font-semibold text-xs text-brand-ink truncate">
+                    {loadData.destFacility}
+                  </div>
+                )}
+                {loadData?.destAddress && (
+                  <div className="text-[11px] text-brand-muted truncate">
+                    {loadData.destAddress}
+                  </div>
+                )}
+                <div className="text-xs font-medium text-brand-ink">
+                  {loadData?.destCity ? `${loadData.destCity}, ${loadData.destState || ""}${loadData.destZip ? ` ${loadData.destZip}` : ""}` : loadData?.destination || "Destination"}
                 </div>
-              </div>
-              <div className="text-right">
-                <div className="text-[9px] text-brand-muted-soft uppercase tracking-wider">
-                  Rate
-                </div>
-                <div className="font-semibold text-xs text-emerald-600 dark:text-emerald-400">
-                  {typeof loadData?.rate === "number" ? `$${loadData.rate.toLocaleString()}` : loadData?.rate}
-                </div>
+                {(loadData?.destAppointment || loadData?.deliveryDate) && (
+                  <div className="text-[10px] text-brand-muted-soft font-mono mt-0.5">
+                    📅 {loadData.destAppointment || loadData.deliveryDate}
+                  </div>
+                )}
               </div>
             </div>
 
-            {loadData?.equipmentType && (
-              <div className="flex items-center gap-2 pt-0.5 text-[11px] text-brand-muted-soft font-mono">
-                <span className="rounded bg-brand-cream/80 px-2 py-0.5 border border-brand-rule">
-                  {loadData.equipmentType}
+            <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-brand-rule/40 text-[11px]">
+              <div className="flex items-center gap-1.5 flex-wrap font-mono">
+                {loadData?.equipmentType && (
+                  <span className="rounded bg-brand-cream/80 px-2 py-0.5 border border-brand-rule text-[10px] font-semibold text-brand-ink">
+                    {loadData.equipmentType}
+                  </span>
+                )}
+                {loadData?.temperature && (
+                  <span className="rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 px-2 py-0.5 border border-sky-500/20 text-[10px] font-semibold">
+                    ❄️ {loadData.temperature}
+                  </span>
+                )}
+                {loadData?.weight && (
+                  <span className="text-brand-muted text-[10px]">
+                    ⚖️ {typeof loadData.weight === "number" ? `${loadData.weight.toLocaleString()} lbs` : loadData.weight}
+                  </span>
+                )}
+                {loadData?.miles && (
+                  <span className="text-brand-muted text-[10px]">
+                    📍 {typeof loadData.miles === "number" ? `${loadData.miles.toLocaleString()} mi` : loadData.miles}
+                  </span>
+                )}
+                {loadData?.commodity && (
+                  <span className="text-brand-muted text-[10px]">
+                    📦 {loadData.commodity}
+                  </span>
+                )}
+              </div>
+
+              <div className="text-right ml-auto">
+                <span className="font-semibold text-sm text-emerald-600 dark:text-emerald-400">
+                  {typeof loadData?.rate === "number" ? `$${loadData.rate.toLocaleString()}` : loadData?.rate}
                 </span>
-                {loadData?.commodity && <span>· {loadData.commodity}</span>}
+                {loadData?.carrierRate && (
+                  <div className="text-[9px] text-brand-muted-soft font-mono">
+                    Carrier: ${typeof loadData.carrierRate === "number" ? loadData.carrierRate.toLocaleString() : loadData.carrierRate}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {loadData?.loadId && isApproved && (
+              <div className="pt-1">
+                <a
+                  href={`/loads/${loadData.loadId}`}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-accent hover:underline"
+                >
+                  Open Load #{loadData.loadNumber} in TMS <ArrowRight className="size-3" />
+                </a>
               </div>
             )}
           </div>

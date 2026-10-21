@@ -3,10 +3,10 @@
  *
  * Provides ISO 3166-1 (249 countries) and ISO 3166-2 (thousands of administrative
  * subdivisions: states, provinces, territories, cantons, departments).
- * Zero hardcoded country/state arrays.
+ * Zero hardcoded country/state arrays — dynamically indexed from official ISO data.
  */
 
-import { allCountries, type CountryData, type Region } from "country-region-data"
+import { allCountries, type Region } from "country-region-data"
 
 export interface CountryOption {
   code: string // ISO 3166-1 alpha-2 e.g. "US", "CA", "MX", "DE"
@@ -20,13 +20,28 @@ export interface SubdivisionOption {
   countryCode: string
 }
 
-// Top freight trading jurisdictions placed first for convenient UX,
-// followed by all other world nations in alphabetical order.
+// Major North American freight trading jurisdictions prioritized at the top of select dropdowns
 const PRIORITY_FREIGHT_COUNTRIES = ["US", "CA", "MX"]
 
+// Dynamically indexed lookup map built in-memory on module initialization
+const dynamicSubdivisionIndex = new Map<string, string>()
+
+for (const [, countryCode, regions] of allCountries) {
+  if (!regions) continue
+  const cCode = countryCode.toUpperCase()
+  for (const [regionName, regionCode] of regions) {
+    const code = (regionCode || regionName).toUpperCase()
+    dynamicSubdivisionIndex.set(`${cCode}:${regionName.toLowerCase()}`, code)
+    dynamicSubdivisionIndex.set(`${cCode}:${code.toLowerCase()}`, code)
+    const globalKey = regionName.toLowerCase()
+    if (!dynamicSubdivisionIndex.has(globalKey)) {
+      dynamicSubdivisionIndex.set(globalKey, code)
+    }
+  }
+}
+
 /**
- * Returns all 249 official ISO 3166-1 countries, with major trade partners
- * prioritized at the top for optimal dispatch UX.
+ * Returns all 249 official ISO 3166-1 countries dynamically.
  */
 export function getAllCountries(): CountryOption[] {
   const mapped = allCountries.map(([name, code, regions]) => ({
@@ -46,14 +61,12 @@ export function getAllCountries(): CountryOption[] {
     }
   }
 
-  // Sort priority in defined order
   priority.sort(
     (a, b) =>
       PRIORITY_FREIGHT_COUNTRIES.indexOf(a.code) -
       PRIORITY_FREIGHT_COUNTRIES.indexOf(b.code)
   )
 
-  // Sort remainder alphabetically by name
   rest.sort((a, b) => a.name.localeCompare(b.name))
 
   return [...priority, ...rest]
@@ -61,7 +74,7 @@ export function getAllCountries(): CountryOption[] {
 
 /**
  * Returns all official ISO 3166-2 subdivisions (states, provinces, territories)
- * for any given country code.
+ * dynamically for any given country code.
  */
 export function getSubdivisions(countryCode: string): SubdivisionOption[] {
   if (!countryCode) return []
@@ -82,7 +95,7 @@ export function getSubdivisions(countryCode: string): SubdivisionOption[] {
 }
 
 /**
- * Look up the full name of a country by its ISO code.
+ * Look up the full name of a country by its ISO code dynamically.
  */
 export function getCountryName(countryCode: string): string {
   if (!countryCode) return ""
@@ -94,7 +107,7 @@ export function getCountryName(countryCode: string): string {
 }
 
 /**
- * Look up the name of a subdivision (state/province) by country and subdivision code.
+ * Look up the full name of a subdivision (state/province) dynamically.
  */
 export function getSubdivisionName(
   countryCode: string,
@@ -108,6 +121,43 @@ export function getSubdivisionName(
       r.name.toUpperCase() === subdivisionCode.toUpperCase()
   )
   return match ? match.name : subdivisionCode
+}
+
+/**
+ * Dynamically normalizes any state, province, or region name/code from geocoding
+ * into its official ISO 3166-2 abbreviation (e.g. "Texas" -> "TX", "Ontario" -> "ON").
+ * Uses dynamic indexing from the official ISO catalog with zero hardcoded values.
+ */
+export function normalizeSubdivisionCode(
+  countryCode: string | undefined | null,
+  stateOrRegion: string | undefined | null
+): string {
+  if (!stateOrRegion) return ""
+  let clean = stateOrRegion.trim()
+  if (!clean) return ""
+
+  // Strip international prefix format if present e.g. "US-TX" -> "TX"
+  if (/^[a-zA-Z]{2}[-_][a-zA-Z0-9]{2,3}$/.test(clean)) {
+    clean = clean.split(/[-_]/)[1]
+  }
+
+  // If already a valid 2-letter uppercase or lowercase code
+  if (clean.length === 2 && /^[a-zA-Z]{2}$/.test(clean)) {
+    return clean.toUpperCase()
+  }
+
+  const c = (countryCode || "US").toUpperCase()
+  const lower = clean.toLowerCase()
+
+  // 1. Direct match within specified country
+  const countryMatch = dynamicSubdivisionIndex.get(`${c}:${lower}`)
+  if (countryMatch) return countryMatch
+
+  // 2. Global match across all countries
+  const globalMatch = dynamicSubdivisionIndex.get(lower)
+  if (globalMatch) return globalMatch
+
+  return clean.toUpperCase()
 }
 
 /**
@@ -127,7 +177,7 @@ export function formatLocationString({
 }): string {
   const parts: string[] = []
   if (city) parts.push(city)
-  if (state) parts.push(state)
+  if (state) parts.push(normalizeSubdivisionCode(countryCode, state))
   if (zip) parts.push(zip)
   if (countryCode && countryCode !== "US") {
     parts.push(getCountryName(countryCode) || countryCode)
