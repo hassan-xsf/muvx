@@ -45,6 +45,7 @@ import {
   ChainOfThoughtSearchResults,
   ChainOfThoughtSearchResult,
   ChainOfThoughtContent,
+  ChainOfThoughtItem,
 } from "@/components/ai-elements/chain-of-thought";
 import {
   Reasoning,
@@ -132,8 +133,6 @@ import {
   traceWarn,
   describePart,
 } from "@/lib/copilot/client-trace";
-import { Shimmer } from "@/components/ai-elements/shimmer";
-import { Suggestions, Suggestion } from "@/components/ai-elements/suggestion";
 import {
   StreamingAssistantMessage,
   fromUIMessage,
@@ -164,7 +163,8 @@ import {
   ExternalLink,
   UserPlus,
   Building2,
-CircleDollarSign,
+  CircleDollarSign,
+  DollarSign,
   Brain,
   Package,
   PackagePlus,
@@ -244,25 +244,7 @@ export const SPECIALIST_TEAMS: BotSpecialist[] = [
   },
 ];
 
-/** Shown on an empty chat. Mirrors the server's static fallback list. */
-const STARTER_SUGGESTIONS = [
-  {
-    title: "Show today's active loads",
-    prompt: "Show me all loads active today with their current status.",
-  },
-  {
-    title: "Audit missing PODs",
-    prompt: "Find delivered loads from the last 7 days that are still missing a signed POD.",
-  },
-  {
-    title: "Fleet availability",
-    prompt: "Which tractors and drivers are available for dispatch right now?",
-  },
-  {
-    title: "Overdue AR",
-    prompt: "Show me the oldest overdue customer invoices and their aging balances.",
-  },
-];
+
 
 function CopyButton({ message }: { message: UIMessage }) {
   const [copied, setCopied] = useState(false);
@@ -465,53 +447,160 @@ function renderMessageParts(
   onSendMessage?: (text: string) => void,
   botCoat: BotCoat = "ink",
   /**
-   * True only while this exact message is the one currently streaming. Drives
-   * the live "Thinking…" shimmer; once the run finishes the step keeps its
-   * label and stops animating.
+   * True only while this exact message is the one currently streaming.
    */
   isLive: boolean = false
 ): React.ReactNode {
   const parts = message.parts;
   const out: React.ReactNode[] = [];
-  let cotBuffer: UIMessage["parts"][number][] = [];
 
-  const flushCot = (anchorIndex: number) => {
-    if (cotBuffer.length === 0) return;
-    const steps = cotBuffer.map((p, i) =>
-      renderPart(message, p, anchorIndex + i, respondToApproval, onSendMessage, botCoat)
-    );
+  // Collect consecutive data-cot-step parts so we can render them as a
+  // single ChainOfThought block. The server emits one per tool call (plus
+  // a placeholder "thinking" step at the start), so a typical agent turn
+  // produces a chain like: thinking → search → search → book → done.
+  const cotSteps: Array<{
+    index: number
+    data: {
+      id?: string
+      toolName?: string
+      icon?: string
+      label?: string
+      description?: string
+      status?: "active" | "complete" | "pending"
+      summary?: string[]
+    }
+  }> = [];
+
+  const flushCot = () => {
+    if (cotSteps.length === 0) return;
     out.push(
-      <ChainOfThought
-        key={`${message.id}-cot-group-${anchorIndex}`}
-        defaultOpen
-        className="my-3 rounded-xl border border-brand-rule/40 bg-brand-cream/20 px-3.5 py-2.5"
-      >
-        <ChainOfThoughtHeader headerIcon={null}>
-          <span className="flex items-center gap-2 text-[13px] font-medium text-brand-muted">
-            <Cpu className="size-3.5 text-brand-accent/70" />
-            Working through it
-          </span>
-        </ChainOfThoughtHeader>
-        <ChainOfThoughtContent className="mt-1">{steps}</ChainOfThoughtContent>
-      </ChainOfThought>
+      <Fragment key={`${message.id}-cot-${cotSteps[0].index}`}>
+        {renderChainOfThought(cotSteps, isLive)}
+      </Fragment>,
     );
-    cotBuffer = [];
+    cotSteps.length = 0;
   };
 
   parts.forEach((part, i) => {
     if (isDataUIPart(part) && part.type === "data-cot-step") {
-      cotBuffer.push(part);
+      const data = ((part as { data?: unknown }).data ?? {}) as {
+        id?: string
+        toolName?: string
+        icon?: string
+        label?: string
+        description?: string
+        status?: "active" | "complete" | "pending"
+        summary?: string[]
+      };
+      cotSteps.push({ index: i, data });
       return;
     }
-    flushCot(i);
-    out.push(
-      <Fragment key={`${message.id}-p-${i}`}>
-        {renderPart(message, part, i, respondToApproval, onSendMessage, botCoat)}
-      </Fragment>
-    );
+    // Reasoning parts are still hidden — the CoT block carries the same
+    // information in a more structured form.
+    if (isReasoningUIPart(part)) {
+      return;
+    }
+
+    flushCot();
+
+    const rendered = renderPart(message, part, i, respondToApproval, onSendMessage, botCoat);
+    if (rendered !== null && rendered !== undefined) {
+      out.push(
+        <Fragment key={`${message.id}-p-${i}`}>
+          {rendered}
+        </Fragment>
+      );
+    }
   });
-  flushCot(parts.length);
+
+  flushCot();
   return out;
+}
+
+/**
+ * Render a collected run of data-cot-step parts as a single ChainOfThought
+ * block. The header shows the active step's label (or "Reasoned through the
+ * request" once everything is complete); each step becomes a ChainOfThoughtStep
+ * with its icon, label, and any summary badges the server attached.
+ */
+function renderChainOfThought(
+  steps: Array<{
+    index: number
+    data: {
+      id?: string
+      toolName?: string
+      icon?: string
+      label?: string
+      description?: string
+      status?: "active" | "complete" | "pending"
+      summary?: string[]
+    }
+  }>,
+  isLive: boolean,
+): React.ReactNode {
+  // Drop the synthetic "thinking" placeholder if real steps followed it —
+  // it adds noise once the model has actually done work.
+  const realSteps = steps.filter(
+    (s) => s.data.toolName && s.data.toolName !== "__thinking__",
+  );
+  const thinkingStep = steps.find(
+    (s) => s.data.toolName === "__thinking__",
+  );
+  const visibleSteps =
+    realSteps.length > 0 ? realSteps : thinkingStep ? [thinkingStep] : [];
+
+  if (visibleSteps.length === 0) return null;
+
+  const lastActive = [...visibleSteps].reverse().find(
+    (s) => s.data.status === "active",
+  );
+  const headerLabel = lastActive?.data.label?.trim()
+    ? lastActive.data.label
+    : isLive
+      ? "Reasoning through the request"
+      : "Reasoned through the request";
+
+  return (
+    <div className="my-2 max-w-2xl">
+      <ChainOfThought defaultOpen={isLive}>
+        <ChainOfThoughtHeader headerIcon={null}>
+          {headerLabel}
+        </ChainOfThoughtHeader>
+        <ChainOfThoughtContent>
+          {visibleSteps.map((step, idx) => {
+            const Icon = resolveCotIcon(step.data.icon);
+            const label = step.data.label?.trim() || "Working";
+            const summary = (step.data.summary ?? []).filter(Boolean);
+            const status =
+              step.data.status === "active"
+                ? "active"
+                : step.data.status === "pending"
+                  ? "pending"
+                  : "complete";
+            return (
+              <ChainOfThoughtStep
+                key={step.data.id ?? `${idx}-${label}`}
+                icon={Icon}
+                label={label}
+                status={status}
+                showConnector={idx < visibleSteps.length - 1}
+              >
+                {summary.length > 0 && (
+                  <ChainOfThoughtSearchResults>
+                    {summary.map((s, sIdx) => (
+                      <ChainOfThoughtSearchResult key={sIdx}>
+                        {s}
+                      </ChainOfThoughtSearchResult>
+                    ))}
+                  </ChainOfThoughtSearchResults>
+                )}
+              </ChainOfThoughtStep>
+            );
+          })}
+        </ChainOfThoughtContent>
+      </ChainOfThought>
+    </div>
+  );
 }
 
 /** Render a single UIMessagePart using the appropriate AI Element component. */
@@ -535,97 +624,12 @@ function renderPart(
     );
   }
 
-  if (isReasoningUIPart(part)) {
-    const isStreaming = part.state === "streaming";
-    return (
-      <ChainOfThought
-        key={`${message.id}-reasoning-${index}`}
-        defaultOpen={isStreaming}
-        className="my-3 rounded-xl border border-brand-rule/40 bg-brand-cream/20 px-3.5 py-2.5"
-      >
-        <ChainOfThoughtHeader headerIcon={null}>
-          <span className="flex items-center gap-2 text-[13px] font-medium text-brand-muted">
-            {isStreaming ? (
-              <>
-                <Brain className="size-3.5 animate-pulse text-brand-accent" />
-                <Shimmer duration={1.4}>Reasoning…</Shimmer>
-              </>
-            ) : (
-              <>
-                <Brain className="size-3.5 text-brand-muted-soft" />
-                Reasoned through the request
-              </>
-            )}
-          </span>
-        </ChainOfThoughtHeader>
-        <ChainOfThoughtContent>
-          <div className="mt-1 border-l-2 border-brand-rule/50 pl-3 text-[13px] leading-relaxed text-brand-muted whitespace-pre-wrap">
-            {part.text}
-          </div>
-        </ChainOfThoughtContent>
-      </ChainOfThought>
-    );
-  }
-
-  // Structured Chain-of-Thought data parts emitted by /api/chat route. Each
-  // tool invocation lands here as a typed step (icon + label + status).
-  // The renderer below is used both standalone and by the group renderer
-  // when consecutive cot steps share the same parent message.
-  if (isDataUIPart(part) && part.type === "data-cot-step") {
-    const cot = part.data as {
-      id?: string;
-      toolName?: string;
-      icon?: string;
-      label?: string;
-      description?: string;
-      status?: "active" | "complete" | "pending";
-      summary?: string[];
-      error?: string;
-    };
-    const Icon = resolveCotIcon(cot.icon);
-    const isPlaceholder = !cot.label?.trim();
-    const status = cot.status ?? "complete";
-    const isError = !!cot.error;
-    return (
-      <ChainOfThoughtStep
-        key={cot.id ?? `${message.id}-cot-${index}`}
-        icon={Icon}
-        status={status}
-        label={
-          <span className={cn(
-            "text-[13px] font-medium",
-            status === "active" && "text-brand-ink",
-            status === "complete" && !isError && "text-brand-muted",
-            isError && "text-destructive"
-          )}>
-            {isPlaceholder && status === "active" ? (
-              <Shimmer duration={1.4}>Analyzing…</Shimmer>
-            ) : isPlaceholder ? (
-              "Completed analysis"
-            ) : (
-              cot.label
-            )}
-          </span>
-        }
-        description={
-          cot.error ? (
-            <span className="text-destructive/80 text-xs">{cot.error}</span>
-          ) : cot.description ? (
-            <span className="text-brand-muted-soft text-xs">{cot.description}</span>
-          ) : undefined
-        }
-      >
-        {Array.isArray(cot.summary) && cot.summary.length > 0 && (
-          <ChainOfThoughtSearchResults className="mt-1.5">
-            {cot.summary.map((s, i) => (
-              <ChainOfThoughtSearchResult key={`${cot.id ?? index}-s-${i}`}>
-                {s}
-              </ChainOfThoughtSearchResult>
-            ))}
-          </ChainOfThoughtSearchResults>
-        )}
-      </ChainOfThoughtStep>
-    );
+  // Reasoning parts are surfaced through the ChainOfThought block built by
+  // renderMessageParts; CoT data parts are consumed there too. Both are
+  // filtered out before renderPart is called, but keep the guard so a stray
+  // part never leaks through.
+  if (isReasoningUIPart(part) || (isDataUIPart(part) && part.type === "data-cot-step")) {
+    return null;
   }
 
   if (isFileUIPart(part)) {
@@ -761,40 +765,105 @@ function renderPart(
               </span>
             </div>
 
-            <div className="flex items-center justify-between rounded-lg bg-brand-card p-2.5 border border-brand-rule">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-lg bg-brand-card p-3 border border-brand-rule">
               <div>
-                <div className="text-[9px] text-brand-muted-soft uppercase tracking-wider">
-                  Origin
+                <div className="text-[9px] text-brand-muted-soft uppercase tracking-wider font-semibold">
+                  Pickup (Origin)
                 </div>
-                <div className="font-semibold text-xs text-brand-ink">
-                  {loadData?.originCity ? `${loadData.originCity}, ${loadData.originState || ""}` : loadData?.origin || "Origin"}
+                {loadData?.originFacility && (
+                  <div className="font-semibold text-xs text-brand-ink truncate">
+                    {loadData.originFacility}
+                  </div>
+                )}
+                {loadData?.originAddress && (
+                  <div className="text-[11px] text-brand-muted truncate">
+                    {loadData.originAddress}
+                  </div>
+                )}
+                <div className="text-xs font-medium text-brand-ink">
+                  {loadData?.originCity ? `${loadData.originCity}, ${loadData.originState || ""}${loadData.originZip ? ` ${loadData.originZip}` : ""}` : loadData?.origin || "Origin"}
                 </div>
+                {(loadData?.originAppointment || loadData?.pickupDate) && (
+                  <div className="text-[10px] text-brand-muted-soft font-mono mt-0.5">
+                    📅 {loadData.originAppointment || loadData.pickupDate}
+                  </div>
+                )}
               </div>
-              <ArrowRight className="size-3.5 text-brand-muted-soft" />
-              <div>
-                <div className="text-[9px] text-brand-muted-soft uppercase tracking-wider">
-                  Destination
+
+              <div className="border-t sm:border-t-0 sm:border-l border-brand-rule/60 sm:pl-3 pt-2 sm:pt-0">
+                <div className="text-[9px] text-brand-muted-soft uppercase tracking-wider font-semibold">
+                  Delivery (Destination)
                 </div>
-                <div className="font-semibold text-xs text-brand-ink">
-                  {loadData?.destCity ? `${loadData.destCity}, ${loadData.destState || ""}` : loadData?.destination || "Destination"}
+                {loadData?.destFacility && (
+                  <div className="font-semibold text-xs text-brand-ink truncate">
+                    {loadData.destFacility}
+                  </div>
+                )}
+                {loadData?.destAddress && (
+                  <div className="text-[11px] text-brand-muted truncate">
+                    {loadData.destAddress}
+                  </div>
+                )}
+                <div className="text-xs font-medium text-brand-ink">
+                  {loadData?.destCity ? `${loadData.destCity}, ${loadData.destState || ""}${loadData.destZip ? ` ${loadData.destZip}` : ""}` : loadData?.destination || "Destination"}
                 </div>
-              </div>
-              <div className="text-right">
-                <div className="text-[9px] text-brand-muted-soft uppercase tracking-wider">
-                  Rate
-                </div>
-                <div className="font-semibold text-xs text-emerald-600 dark:text-emerald-400">
-                  {typeof loadData?.rate === "number" ? `$${loadData.rate.toLocaleString()}` : loadData?.rate}
-                </div>
+                {(loadData?.destAppointment || loadData?.deliveryDate) && (
+                  <div className="text-[10px] text-brand-muted-soft font-mono mt-0.5">
+                    📅 {loadData.destAppointment || loadData.deliveryDate}
+                  </div>
+                )}
               </div>
             </div>
 
-            {loadData?.equipmentType && (
-              <div className="flex items-center gap-2 pt-0.5 text-[11px] text-brand-muted-soft font-mono">
-                <span className="rounded bg-brand-cream/80 px-2 py-0.5 border border-brand-rule">
-                  {loadData.equipmentType}
+            <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-brand-rule/40 text-[11px]">
+              <div className="flex items-center gap-1.5 flex-wrap font-mono">
+                {loadData?.equipmentType && (
+                  <span className="rounded bg-brand-cream/80 px-2 py-0.5 border border-brand-rule text-[10px] font-semibold text-brand-ink">
+                    {loadData.equipmentType}
+                  </span>
+                )}
+                {loadData?.temperature && (
+                  <span className="rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 px-2 py-0.5 border border-sky-500/20 text-[10px] font-semibold">
+                    ❄️ {loadData.temperature}
+                  </span>
+                )}
+                {loadData?.weight && (
+                  <span className="text-brand-muted text-[10px]">
+                    ⚖️ {typeof loadData.weight === "number" ? `${loadData.weight.toLocaleString()} lbs` : loadData.weight}
+                  </span>
+                )}
+                {loadData?.miles && (
+                  <span className="text-brand-muted text-[10px]">
+                    📍 {typeof loadData.miles === "number" ? `${loadData.miles.toLocaleString()} mi` : loadData.miles}
+                  </span>
+                )}
+                {loadData?.commodity && (
+                  <span className="text-brand-muted text-[10px]">
+                    📦 {loadData.commodity}
+                  </span>
+                )}
+              </div>
+
+              <div className="text-right ml-auto">
+                <span className="font-semibold text-sm text-emerald-600 dark:text-emerald-400">
+                  {typeof loadData?.rate === "number" ? `$${loadData.rate.toLocaleString()}` : loadData?.rate}
                 </span>
-                {loadData?.commodity && <span>· {loadData.commodity}</span>}
+                {loadData?.carrierRate && (
+                  <div className="text-[9px] text-brand-muted-soft font-mono">
+                    Carrier: ${typeof loadData.carrierRate === "number" ? loadData.carrierRate.toLocaleString() : loadData.carrierRate}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {loadData?.loadId && isApproved && (
+              <div className="pt-1">
+                <a
+                  href={`/loads/${loadData.loadId}`}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-accent hover:underline"
+                >
+                  Open Load #{loadData.loadNumber} in TMS <ArrowRight className="size-3" />
+                </a>
               </div>
             )}
           </div>
@@ -1749,7 +1818,9 @@ function renderPart(
                     size="xs"
                     mood="think"
                   />
-                  <Shimmer duration={2}>Sub-agent analyzing operational parameters…</Shimmer>
+                  <span className="text-xs text-brand-muted">
+                    Processing operational parameters…
+                  </span>
                 </div>
               </TaskItem>
             )}
@@ -2131,7 +2202,7 @@ export default function ChatInterface() {
   const [allowAll, setAllowAll] = useState(true); // Fully autonomous — no approval gates
   const [recentFinish, setRecentFinish] = useState(false);
 
-  const { messages, setMessages, sendMessage, status, error } = useChat({
+  const { messages, setMessages, sendMessage, status, error, stop } = useChat({
     id: "ai-chat",
   });
 
@@ -2226,51 +2297,7 @@ export default function ChatInterface() {
     });
   }, [messages]);
 
-  // ── Context-aware suggestions ────────────────────────────────────────
-  // Suggestions are generated server-side from the actual conversation so they
-  // follow what was just discussed rather than a fixed list. Re-fetched once
-  // the chat goes ready; the starter list covers the empty state.
-  const [adaptiveSuggestions, setAdaptiveSuggestions] = useState<
-    { title: string; prompt: string }[]
-  >(STARTER_SUGGESTIONS);
 
-  useEffect(() => {
-    if (status !== "ready" || messages.length === 0) return;
-
-    const transcript = messages
-      .slice(-8)
-      .map((m) => {
-        const text = m.parts
-          .filter(isTextUIPart)
-          .map((p) => p.text)
-          .join(" ")
-          .trim();
-        return text ? `${m.role}: ${text}` : "";
-      })
-      .filter(Boolean)
-      .join("\n");
-
-    if (transcript.length < 20) return;
-
-    const controller = new AbortController();
-    fetch("/api/copilot/suggestions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ transcript, role: "main", model: selectedModel }),
-      signal: controller.signal,
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (Array.isArray(data?.suggestions) && data.suggestions.length > 0) {
-          setAdaptiveSuggestions(data.suggestions);
-        }
-      })
-      .catch(() => {
-        // Suggestions are best-effort; keep whatever is on screen.
-      });
-
-    return () => controller.abort();
-  }, [status, messages, selectedModel]);
 
   // Calculate real-time dynamic bot mood
   const isAnyToolRunning = messages.some((m) =>
@@ -2314,6 +2341,29 @@ export default function ChatInterface() {
       });
   }, []);
 
+  const readFileAsDataUrl = (file: File): Promise<FileUIPart> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        resolve({
+          type: "file",
+          mediaType: file.type || "application/octet-stream",
+          filename: file.name,
+          url: reader.result as string,
+        });
+      };
+      reader.onerror = () => {
+        resolve({
+          type: "file",
+          mediaType: file.type || "application/octet-stream",
+          filename: file.name,
+          url: "",
+        });
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
   const sendWithProvider = async (
     text: string,
     options: { webSearch: boolean; model: string | null; files?: File[] }
@@ -2341,25 +2391,10 @@ export default function ChatInterface() {
 
     let fileParts: FileUIPart[] | undefined;
     if (options.files && options.files.length > 0) {
-      setUploadState("uploading");
-      try {
-        // Browser → S3 direct. The server only signs.
-        fileParts = await uploadFilesToS3(options.files);
-        traceInfo("upload:ok", {
-          count: fileParts.length,
-          files: fileParts.map((f) => f.filename),
-        });
-      } catch (err) {
-        traceError("upload:failed", {
-          message: err instanceof Error ? err.message : String(err),
-        });
-        setUploadError(err instanceof Error ? err.message : "Upload failed");
-        setUploadState("error");
-        endSend();
-        return;
-      } finally {
-        setUploadState("idle");
-      }
+      // Instantly convert local files to data URIs in <3ms so UI transition is instant
+      fileParts = await Promise.all(options.files.map(readFileAsDataUrl));
+      // Non-blocking background upload to S3 for persistent storage
+      uploadFilesToS3(options.files).catch(() => {});
     }
 
     if (fileParts && fileParts.length > 0) {
@@ -2377,11 +2412,6 @@ export default function ChatInterface() {
     }
     endSend();
   };
-
-  const handleFiles = (files: File[]) =>
-    sendWithProvider("", { webSearch: false, model: selectedModel, files });
-
-  const emptyStateSuggestions = STARTER_SUGGESTIONS;
 
   if (messages.length === 0) {
     return (
@@ -2405,10 +2435,7 @@ export default function ChatInterface() {
             </div>
           )}
 
-          {/* Small decorative orb. Gemini keeps the headline + input as the
-              dual focal points; the agent orb here is a quiet accent, not a
-              billboard. A tiny animated coat halo sells "alive" without
-              stealing attention. */}
+          {/* Small decorative orb */}
           <div className="relative mb-3">
             <MuvxBot
               size="sm"
@@ -2419,64 +2446,65 @@ export default function ChatInterface() {
             />
           </div>
 
-          {/* Hero headline — single, clean line. No eyebrow, no decorative
-              subtitle; the input below carries the affordance, and excess
-              chrome around it dilutes the focus. */}
-          <h1 className="font-serif text-[clamp(28px,4vw,40px)] leading-[1.1] tracking-tight text-brand-ink text-center">
+          {/* Hero headline matching user screenshot */}
+          <h1 className="font-serif text-[clamp(28px,4vw,38px)] leading-[1.15] tracking-tight text-brand-ink text-center">
             What should <span className="italic text-brand-accent">Muvx</span> handle next?
           </h1>
 
-          {/* Hero input — the focal point. The AI_Input_Search component
-              already renders the model picker inline on the right edge; we
-              leave it as-is so the affordance matches the rest of the app. */}
+          {/* Hero input — clean card */}
           <div className="mt-7 w-full">
             <AI_Input_Search
               models={availableModels}
               selectedModel={selectedModel}
               onModelChange={setSelectedModel}
               onSubmit={sendWithProvider}
-              onFilesSelected={handleFiles}
-              placeholder="Ask Muvx anything — loads, rates, drivers, invoices, or attach a document…"
-              searchLabel="Web Search"
+              isLoading={status === "submitted" || status === "streaming"}
+              onStop={stop}
+              placeholder="Ask Muvx anything — loads, rates, drivers, invoices, or attach a document..."
             />
           </div>
 
-          {/* Whisper-quiet suggestions — icon + plain text rows below the
-              input, echoing the Gemini "small hints" pattern. No card chrome,
-              no button backgrounds; they read as flavor, not as competitors
-              to the input above. */}
-          <div className="mt-8 w-full">
-            <ul className="flex flex-col gap-1">
-              {emptyStateSuggestions.map((item, idx) => {
-                const Icon =
-                  idx === 0 ? Truck
-                  : idx === 1 ? FileWarning
-                  : idx === 2 ? Users
-                  : CircleDollarSign
-                return (
-                  <li key={`${item.title}-${idx}`}>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        sendWithProvider(item.prompt, {
-                          webSearch: false,
-                          model: selectedModel,
-                        })
-                      }
-                      className="group flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-brand-cream-soft"
-                    >
-                      <Icon
-                        className="size-3.5 shrink-0 text-brand-muted-soft group-hover:text-brand-accent"
-                        strokeWidth={1.8}
-                      />
-                      <span className="text-[13px] text-brand-muted group-hover:text-brand-ink">
-                        {item.title}
-                      </span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
+          {/* Starter prompts matching user screenshot */}
+          <div className="mt-6 flex w-full max-w-2xl flex-col items-start gap-2.5 px-4 sm:px-1">
+            {[
+              {
+                icon: Truck,
+                text: "Show today's active loads",
+                prompt: "Show me all loads active today with their current status.",
+              },
+              {
+                icon: FileText,
+                text: "Audit missing PODs",
+                prompt: "Find delivered loads from the last 7 days that are still missing a signed POD.",
+              },
+              {
+                icon: Users,
+                text: "Fleet availability",
+                prompt: "Which tractors and drivers are available for dispatch right now?",
+              },
+              {
+                icon: DollarSign,
+                text: "Overdue AR",
+                prompt: "Show me all overdue customer invoices and open AR aging.",
+              },
+            ].map((hint, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() =>
+                  sendWithProvider(hint.prompt, {
+                    webSearch: false,
+                    model: selectedModel,
+                  })
+                }
+                className="group flex items-center gap-2.5 text-left text-xs text-brand-muted hover:text-brand-ink transition-colors cursor-pointer py-0.5"
+              >
+                <hint.icon className="size-3.5 shrink-0 text-brand-muted-soft group-hover:text-brand-ink transition-colors" />
+                <span className="font-normal transition-colors">
+                  {hint.text}
+                </span>
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -2509,14 +2537,6 @@ export default function ChatInterface() {
               const isLastMessage = mIdx === messages.length - 1;
               const isAssistant = message.role === "assistant";
               const rowMood: BotMood = isLastMessage ? copilotMood : "idle";
-              const isStreamingNow =
-                isLastMessage && (status === "submitted" || status === "streaming");
-              // Translate the AI-SDK UIMessage into the agentic renderer
-              // schema. Identity translate only — duration is reconstructed
-              // from `parts.length` for memoisation.
-              const streamingMsg = isAssistant
-                ? fromUIMessage(message, isStreamingNow)
-                : null;
               return (
                 <Message key={message.id} from={message.role} className="gap-1.5">
                   {isAssistant && (
@@ -2525,24 +2545,16 @@ export default function ChatInterface() {
                     </div>
                   )}
                   <MessageContent>
-                    {isAssistant && streamingMsg ? (
-                      <StreamingAssistantMessage
-                        message={streamingMsg}
-                        isLoading={isStreamingNow}
-                        onRespondToApproval={respondToApproval}
-                      />
-                    ) : (
-                      renderMessageParts(
-                        message,
-                        respondToApproval,
-                        (text) =>
-                          sendWithProvider(text, {
-                            webSearch: false,
-                            model: selectedModel,
-                          }),
-                        botCoat,
-                        isLastMessage && status === "streaming"
-                      )
+                    {renderMessageParts(
+                      message,
+                      respondToApproval,
+                      (text) =>
+                        sendWithProvider(text, {
+                          webSearch: false,
+                          model: selectedModel,
+                        }),
+                      botCoat,
+                      isLastMessage && status === "streaming"
                     )}
                   </MessageContent>
                   {isAssistant && (
@@ -2555,104 +2567,30 @@ export default function ChatInterface() {
                 </Message>
               );
             })}
-
-            {/* Instant "alive" feedback before first chunk arrives */}
-            {(status === "submitted" || status === "streaming") &&
-              !messages.some(
-                (m) =>
-                  m.role === "assistant" &&
-                  m.parts.some(
-                    (p) =>
-                      (isTextUIPart(p) && p.text.trim().length > 0) ||
-                      isToolUIPart(p) ||
-                      (isDataUIPart(p) && p.type === "data-cot-step")
-                  )
-              ) && (
-                <Message from="assistant" className="gap-1.5">
-                  <div className="flex items-center gap-2 mb-0.5 select-none">
-                    <MuvxBot
-                      size="xs"
-                      coat={botCoat}
-                      mood={copilotMood}
-                      showDots
-                      isActive
-                    />
-                  </div>
-                  <MessageContent>
-                    <div className="flex items-center gap-2.5 py-1">
-                      <div className="flex gap-1">
-                        <span className="size-1.5 rounded-full bg-brand-accent/60 animate-bounce [animation-delay:0ms]" />
-                        <span className="size-1.5 rounded-full bg-brand-accent/60 animate-bounce [animation-delay:150ms]" />
-                        <span className="size-1.5 rounded-full bg-brand-accent/60 animate-bounce [animation-delay:300ms]" />
-                      </div>
-                      <span className="text-[13px] text-brand-muted">
-                        {status === "submitted"
-                          ? "Connecting…"
-                          : "Thinking…"}
-                      </span>
-                    </div>
-                  </MessageContent>
-                </Message>
-              )}
           </ConversationContent>
           <ConversationScrollButton />
       </Conversation>
 
-      {/* Active turn contextual suggestions */}
-      {status === "ready" && adaptiveSuggestions.length > 0 && (
-        <div className="px-4 py-2 max-w-4xl mx-auto w-full">
-          <Suggestions className="flex-wrap gap-2">
-            {adaptiveSuggestions.map((item, idx) => (
-              <Suggestion
-                key={`${item.title}-${idx}`}
-                suggestion={item.title}
-                onClick={() => sendWithProvider(item.prompt, { webSearch: false, model: selectedModel })}
-                className="rounded-lg border-brand-rule bg-brand-card/80 text-brand-muted hover:border-brand-accent/40 hover:text-brand-ink hover:bg-brand-cream/50 shadow-2xs text-[13px] px-3 py-1.5"
-              />
-            ))}
-          </Suggestions>
-        </div>
-      )}
-
-      {/* Upload feedback — the browser pushes bytes straight to S3, so surface
-          progress and any storage rejection above the input bar. */}
-      {uploadState !== "idle" && (
+      {/* Upload error display if storage fails */}
+      {uploadState === "error" && uploadError && (
         <div className="max-w-4xl mx-auto w-full px-4 pb-1.5">
-          <div
-            className={cn(
-              "flex items-center gap-2 text-xs",
-              uploadState === "error"
-                ? "text-destructive"
-                : "text-brand-muted-soft"
-            )}
-          >
-            {uploadState === "uploading" ? (
-              <>
-                <Shimmer duration={1.4}>Uploading to secure storage…</Shimmer>
-              </>
-            ) : (
-              <>
-                <FileWarning className="size-3.5 shrink-0" />
-                <span>{uploadError ?? "Upload failed"}</span>
-              </>
-            )}
+          <div className="flex items-center gap-2 text-xs text-destructive">
+            <FileWarning className="size-3.5 shrink-0" />
+            <span>{uploadError}</span>
           </div>
         </div>
       )}
 
-      {/* Input bar at bottom with file attachment and web search */}
+      {/* Input bar at bottom with file attachment */}
       <div className="p-3 sm:p-4 max-w-4xl mx-auto w-full shrink-0">
-        {/* Context window meter — reads token usage the server attaches via
-            messageMetadata and renders a ring + cost breakdown on hover. */}
-        <TokenContextMeter messages={messages} />
         <AI_Input_Search
           models={availableModels}
           selectedModel={selectedModel}
           onModelChange={setSelectedModel}
           onSubmit={sendWithProvider}
-          onFilesSelected={handleFiles}
-          placeholder="Message Muvx Copilot..."
-          searchLabel="Web Search"
+          isLoading={status === "submitted" || status === "streaming"}
+          onStop={stop}
+          placeholder="Ask Muvx anything — loads, rates, drivers, invoices, or attach a document..."
         />
       </div>
     </div>

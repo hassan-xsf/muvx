@@ -19,17 +19,14 @@
  */
 
 import {
-  createContext,
   memo,
-  useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react"
-import Markdown from "react-markdown"
-import remarkGfm from "remark-gfm"
+import { MessageResponse } from "@/components/ai-elements/message"
 import {
   AlertTriangle,
   Check,
@@ -134,79 +131,8 @@ function formatStreamErrorMessage(message: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// LiveBlockContext — StreamingText uses this to skip code chrome while
-// the markdown is still streaming.
-// ---------------------------------------------------------------------------
-const LiveBlockContext = createContext(false)
-
-function StreamingTextCodeBlock({
-  children,
-  className,
-}: {
-  children?: ReactNode
-  className?: string
-}) {
-  const isLive = useContext(LiveBlockContext)
-  const isInline = !className
-  if (isInline) {
-    return (
-      <code className="rounded-md bg-brand-cream px-1.5 py-0.5 font-mono text-[13px] text-brand-ink">
-        {children}
-      </code>
-    )
-  }
-  const code = String(children ?? "").replace(/\n$/, "")
-  if (isLive) {
-    return (
-      <pre className="my-2 max-h-105 overflow-auto rounded-lg border border-brand-rule/40 bg-brand-cream-soft px-3 py-2 font-mono text-[12.5px] leading-relaxed text-brand-ink">
-        <code>{code}</code>
-      </pre>
-    )
-  }
-  return (
-    <pre className="my-2 overflow-x-auto rounded-lg border border-brand-rule/60 bg-brand-cream-soft px-3 py-2 font-mono text-[12.5px] leading-relaxed text-brand-ink">
-      <code>{code}</code>
-    </pre>
-  )
-}
-
-function StreamingTextTable({ children }: { children?: ReactNode }) {
-  return (
-    <div className="my-2 overflow-x-auto rounded-md border border-brand-rule/40">
-      <table className="m-0 w-full border-collapse text-[13.5px]">
-        {children}
-      </table>
-    </div>
-  )
-}
-
-const STREAMING_MARKDOWN_COMPONENTS = {
-  code: StreamingTextCodeBlock,
-  table: StreamingTextTable,
-} as const
-
-// ---------------------------------------------------------------------------
-// FrozenMarkdown — already-closed markdown that won't re-render
-// ---------------------------------------------------------------------------
-const FrozenMarkdown = memo(function FrozenMarkdown({
-  text,
-}: {
-  text: string
-}) {
-  return (
-    <Markdown
-      remarkPlugins={[remarkGfm]}
-      components={STREAMING_MARKDOWN_COMPONENTS}
-    >
-      {text}
-    </Markdown>
-  )
-})
-
-// ---------------------------------------------------------------------------
-// StreamingText — VS Code-style progressive markdown. Frozen + live split.
-// Sets `.streaming-live` on the live tail so the CSS caret rides at the
-// end of the last child block.
+// StreamingText — unified progressive markdown using official AI SDK Streamdown.
+// Eliminates DOM destruction, list breaks, and layout jumps during streaming.
 // ---------------------------------------------------------------------------
 const StreamingText = memo(function StreamingText({
   text,
@@ -215,23 +141,6 @@ const StreamingText = memo(function StreamingText({
   text: string
   isStreaming: boolean
 }) {
-  const { frozen, live, liveRender } = useMemo(() => {
-    if (!text) return { frozen: "", live: "", liveRender: "" }
-    if (!isStreaming) return { frozen: text, live: "", liveRender: "" }
-    const fenceCount = (text.match(/^```/gm) ?? []).length
-    const insideFence = fenceCount % 2 === 1
-    if (insideFence) {
-      return { frozen: "", live: text, liveRender: `${text}\n\`\`\`` }
-    }
-    const lastBreak = text.lastIndexOf("\n\n")
-    if (lastBreak === -1) return { frozen: "", live: text, liveRender: text }
-    return {
-      frozen: text.slice(0, lastBreak + 2),
-      live: text.slice(lastBreak + 2),
-      liveRender: text.slice(lastBreak + 2),
-    }
-  }, [text, isStreaming])
-
   const tableData = useMemo(() => {
     if (isStreaming) return null
     const tableMatch = text.match(
@@ -261,36 +170,29 @@ const StreamingText = memo(function StreamingText({
   if (tableData) {
     return (
       <div className={prose}>
-        {tableData.beforeTable && <FrozenMarkdown text={tableData.beforeTable} />}
+        {tableData.beforeTable && (
+          <MessageResponse>{tableData.beforeTable}</MessageResponse>
+        )}
         <DataTable
           headers={tableData.parsed.headers}
           rows={tableData.parsed.rows}
           className="my-2"
         />
         {tableData.afterTable.trim() && (
-          <FrozenMarkdown text={tableData.afterTable} />
+          <MessageResponse>{tableData.afterTable}</MessageResponse>
         )}
       </div>
     )
   }
 
   return (
-    <div className={prose}>
-      {frozen && <FrozenMarkdown text={frozen} />}
-      {live && (
-        // .streaming-live enables the .streaming-live > :last-child:not(pre)::after
-        // rule from globals.css — that paints the blinking caret at the tail.
-        <div className={cn(isStreaming && "streaming-live")}>
-          <LiveBlockContext.Provider value={isStreaming}>
-            <Markdown
-              remarkPlugins={[remarkGfm]}
-              components={STREAMING_MARKDOWN_COMPONENTS}
-            >
-              {liveRender}
-            </Markdown>
-          </LiveBlockContext.Provider>
-        </div>
-      )}
+    <div className={cn(prose, isStreaming && "streaming-live")}>
+      <MessageResponse
+        mode={isStreaming ? "streaming" : "static"}
+        isAnimating={isStreaming}
+      >
+        {text}
+      </MessageResponse>
     </div>
   )
 })
@@ -340,23 +242,23 @@ function ReasoningBlock({
 }
 
 // ---------------------------------------------------------------------------
-// ThinkingRun + segment grouping (same algorithm as AI-Agent)
+// ThinkingRun + segment grouping with stable keys
 // ---------------------------------------------------------------------------
 type ThinkingRunSegment =
-  | { kind: "reasoning"; events: ReasoningPartEvent[] }
-  | { kind: "tools"; tools: ToolCallEvent[] }
+  | { id: string; kind: "reasoning"; events: ReasoningPartEvent[] }
+  | { id: string; kind: "tools"; tools: ToolCallEvent[] }
 
 type RenderSegment =
   | ThinkingRunSegment
-  | { kind: "text"; events: TextDeltaEvent[] }
-  | { kind: "sources"; urls: SourceUrlEvent[] }
-  | { kind: "progress"; ev: ProgressEvent }
-  | { kind: "warning"; ev: WarningEvent }
-  | { kind: "stream-error"; ev: StreamErrorEvent }
+  | { id: string; kind: "text"; events: TextDeltaEvent[] }
+  | { id: string; kind: "sources"; urls: SourceUrlEvent[] }
+  | { id: string; kind: "progress"; ev: ProgressEvent }
+  | { id: string; kind: "warning"; ev: WarningEvent }
+  | { id: string; kind: "stream-error"; ev: StreamErrorEvent }
 
 type RenderGroup =
   | RenderSegment
-  | { kind: "thinking-run"; segments: ThinkingRunSegment[] }
+  | { id: string; kind: "thinking-run"; segments: ThinkingRunSegment[] }
 
 function isThinkingRunSegment(seg: RenderSegment): seg is ThinkingRunSegment {
   return seg.kind === "reasoning" || seg.kind === "tools"
@@ -366,32 +268,49 @@ function groupThinkingRuns(segments: RenderSegment[]): RenderGroup[] {
   const groups: RenderGroup[] = []
   let current: ThinkingRunSegment[] = []
   let pendingText: TextDeltaEvent[] = []
+  let pendingTextId = ""
+
+  const flushThinking = () => {
+    if (current.length) {
+      groups.push({
+        id: `thinking-${current[0].id}`,
+        kind: "thinking-run",
+        segments: current,
+      })
+      current = []
+    }
+  }
+
+  const flushText = () => {
+    if (pendingText.length) {
+      groups.push({
+        id: pendingTextId || `text-${groups.length}`,
+        kind: "text",
+        events: pendingText,
+      })
+      pendingText = []
+      pendingTextId = ""
+    }
+  }
 
   for (const seg of segments) {
     if (seg.kind === "text") {
+      flushThinking()
+      if (!pendingTextId) pendingTextId = seg.id
       pendingText.push(...seg.events)
       continue
     }
     if (isThinkingRunSegment(seg)) {
+      flushText()
       current.push(seg)
       continue
     }
-    if (current.length) {
-      groups.push({ kind: "thinking-run", segments: current })
-      current = []
-    }
-    if (pendingText.length) {
-      groups.push({ kind: "text", events: pendingText })
-      pendingText = []
-    }
+    flushThinking()
+    flushText()
     groups.push(seg)
   }
-  if (current.length) {
-    groups.push({ kind: "thinking-run", segments: current })
-  }
-  if (pendingText.length) {
-    groups.push({ kind: "text", events: pendingText })
-  }
+  flushThinking()
+  flushText()
   return groups
 }
 
@@ -546,7 +465,11 @@ function buildSegments(parts: StreamPart[]): RenderSegment[] {
       if (last?.kind === "reasoning") {
         last.events.push(part as ReasoningPartEvent)
       } else {
-        segs.push({ kind: "reasoning", events: [part as ReasoningPartEvent] })
+        segs.push({
+          id: part.id || `reasoning-${segs.length}`,
+          kind: "reasoning",
+          events: [part as ReasoningPartEvent],
+        })
       }
       continue
     }
@@ -570,7 +493,11 @@ function buildSegments(parts: StreamPart[]): RenderSegment[] {
       if (last?.kind === "tools") {
         last.tools.push(t)
       } else {
-        segs.push({ kind: "tools", tools: [t] })
+        segs.push({
+          id: t.toolCallId || t.id || `tools-${segs.length}`,
+          kind: "tools",
+          tools: [t],
+        })
       }
       continue
     }
@@ -578,7 +505,11 @@ function buildSegments(parts: StreamPart[]): RenderSegment[] {
       if (last?.kind === "text") {
         last.events.push(part as TextDeltaEvent)
       } else {
-        segs.push({ kind: "text", events: [part as TextDeltaEvent] })
+        segs.push({
+          id: part.id || `text-${segs.length}`,
+          kind: "text",
+          events: [part as TextDeltaEvent],
+        })
       }
       continue
     }
@@ -586,20 +517,36 @@ function buildSegments(parts: StreamPart[]): RenderSegment[] {
       if (last?.kind === "sources") {
         last.urls.push(part as SourceUrlEvent)
       } else {
-        segs.push({ kind: "sources", urls: [part as SourceUrlEvent] })
+        segs.push({
+          id: part.id || `sources-${segs.length}`,
+          kind: "sources",
+          urls: [part as SourceUrlEvent],
+        })
       }
       continue
     }
     if (part.type === "progress") {
-      segs.push({ kind: "progress", ev: part as ProgressEvent })
+      segs.push({
+        id: part.id || `progress-${segs.length}`,
+        kind: "progress",
+        ev: part as ProgressEvent,
+      })
       continue
     }
     if (part.type === "warning") {
-      segs.push({ kind: "warning", ev: part as WarningEvent })
+      segs.push({
+        id: part.id || `warning-${segs.length}`,
+        kind: "warning",
+        ev: part as WarningEvent,
+      })
       continue
     }
     if (part.type === "stream-error") {
-      segs.push({ kind: "stream-error", ev: part as StreamErrorEvent })
+      segs.push({
+        id: part.id || `stream-error-${segs.length}`,
+        kind: "stream-error",
+        ev: part as StreamErrorEvent,
+      })
       continue
     }
   }
@@ -782,22 +729,18 @@ export function StreamingAssistantMessage({
   onRespondToApproval?: ApprovalResponder
 }) {
   const isStreamingThis = isLoading && !message.isComplete
-  const partsLen = message.orderedParts.length
-  const segments = useMemo(
-    () => buildSegments(message.orderedParts),
-    [partsLen, isStreamingThis],
-  )
-  const renderGroups = useMemo(() => groupThinkingRuns(segments), [segments])
+  // During live streaming, recompute segments so every arriving token immediately updates the UI.
+  // When idle, memoize by orderedParts reference for optimal performance.
+  const segments = buildSegments(message.orderedParts)
+  const renderGroups = groupThinkingRuns(segments)
 
-  const allText = useMemo(() => {
-    return segments
-      .filter(
-        (s): s is { kind: "text"; events: TextDeltaEvent[] } => s.kind === "text",
-      )
-      .flatMap((s) => s.events)
-      .map((e) => e.text)
-      .join("")
-  }, [segments])
+  const allText = segments
+    .filter(
+      (s): s is Extract<RenderSegment, { kind: "text" }> => s.kind === "text",
+    )
+    .flatMap((s) => s.events)
+    .map((e) => e.text)
+    .join("")
 
   const showWorking = isStreamingThis && segments.length === 0
   const allTools = useMemo(
@@ -821,6 +764,7 @@ export function StreamingAssistantMessage({
       <div className="space-y-2">
         {renderGroups.map((seg, i) => {
           const isLastSeg = isStreamingThis && i === renderGroups.length - 1
+          const segKey = seg.id || `seg-${i}`
 
           if (seg.kind === "thinking-run") {
             const hasActiveTool = seg.segments
@@ -828,7 +772,7 @@ export function StreamingAssistantMessage({
               .some((t) => isActiveToolState(t.state))
             return (
               <ThinkingRun
-                key={i}
+                key={segKey}
                 segments={seg.segments}
                 active={isLastSeg || hasActiveTool}
                 onRespond={onRespondToApproval}
@@ -838,36 +782,36 @@ export function StreamingAssistantMessage({
           if (seg.kind === "reasoning") {
             return (
               <ReasoningBlock
-                key={i}
+                key={segKey}
                 reasoningEvents={seg.events}
                 isStreaming={isLastSeg}
               />
             )
           }
           if (seg.kind === "tools") {
-            return <ToolPartList key={i} tools={seg.tools} onRespond={onRespondToApproval} />
+            return <ToolPartList key={segKey} tools={seg.tools} onRespond={onRespondToApproval} />
           }
           if (seg.kind === "text") {
             const text = seg.events.map((e) => e.text).join("")
             return text ? (
-              <StreamingText key={i} text={text} isStreaming={isLastSeg} />
+              <StreamingText key={segKey} text={text} isStreaming={isLastSeg} />
             ) : null
           }
           if (seg.kind === "sources") {
-            return <SourceUrlPills key={i} urls={seg.urls} />
+            return <SourceUrlPills key={segKey} urls={seg.urls} />
           }
           if (seg.kind === "progress") {
             return (
-              <div key={i} className="text-[11.5px] text-brand-muted-soft/75">
+              <div key={segKey} className="text-[11.5px] text-brand-muted-soft/75">
                 {seg.ev.label}
               </div>
             )
           }
           if (seg.kind === "warning") {
-            return <WarningBanner key={i} ev={seg.ev} />
+            return <WarningBanner key={segKey} ev={seg.ev} />
           }
           if (seg.kind === "stream-error") {
-            return <StreamErrorCard key={i} ev={seg.ev} />
+            return <StreamErrorCard key={segKey} ev={seg.ev} />
           }
           return null
         })}

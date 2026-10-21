@@ -16,12 +16,12 @@ const PARTNERS = [
 
 export default function TrustStrip() {
   return (
-    <section className="w-full border-t border-[#dcd5c9] px-6 pb-14 pt-9 md:px-16">
-      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-12 gap-y-5">
-        <p className="shrink-0 font-geist-mono text-[10px] font-medium tracking-[0.04em] text-[#8a8b8f]">
+    <section className="w-full border-t border-[#dcd5c9] px-6 pb-12 pt-8 md:px-16 md:pb-14 md:pt-9">
+      <div className="mx-auto flex max-w-[1440px] flex-col gap-5 sm:gap-6 lg:flex-row lg:items-center lg:gap-12">
+        <p className="shrink-0 font-geist-mono text-[10px] font-medium tracking-[0.04em] text-[#8a8b8f] text-center lg:text-left">
           MOVING FREIGHT WITH
         </p>
-        <div className="flex flex-1 flex-wrap items-center justify-between gap-x-10 gap-y-4 text-[#4a4e57]">
+        <div className="flex flex-1 flex-wrap items-center justify-center gap-x-8 gap-y-4 sm:gap-x-10 lg:justify-between text-[#4a4e57]">
           {PARTNERS.map((p) => (
             <span key={p.name} className={`shrink-0 opacity-70 ${p.cls}`}>
               {p.name}

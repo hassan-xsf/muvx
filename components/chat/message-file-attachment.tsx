@@ -4,15 +4,6 @@ import { memo, useCallback, useState } from "react";
 import type { FileUIPart } from "ai";
 import { DownloadIcon, FileTextIcon, RefreshCwIcon, XIcon } from "lucide-react";
 
-import {
-  Attachment,
-  AttachmentHoverCard,
-  AttachmentHoverCardContent,
-  AttachmentHoverCardTrigger,
-  AttachmentInfo,
-  AttachmentPreview,
-  getMediaCategory,
-} from "@/components/ai-elements/attachments";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Button } from "@/components/ui/button";
 import { refreshAttachmentUrl } from "@/lib/copilot/upload";
@@ -63,26 +54,18 @@ function formatMediaType(mediaType?: string): string | null {
 type Status = "ready" | "uploading" | "error";
 
 export type MessageFileAttachmentProps = {
-  /** Usually `${message.id}-${index}` so React keys stay stable across renders. */
   id: string;
   part: StoredFilePart;
-  /** Defaults to `ready`. The input bar passes live upload state here. */
   status?: Status;
   error?: string | null;
-  /** Rendered in place of the download button — used by the input bar to let a
-      staged file be removed before it is sent. */
   onRemove?: () => void;
   className?: string;
 };
 
 /**
- * Compact attachment card for a chat message.
- *
- * Built on the AI Elements `Attachment` primitives (list variant) rather than a
- * bespoke markup tree, but tightened for message context: content-sized width,
- * a small icon tile, filename plus type and size, and a download affordance
- * that appears on hover. Deliberately no fixed width or height — a 96px
- * thumbnail square reads as an empty grey panel for non-image files.
+ * Authentic ChatGPT-style attachment component for chat history:
+ * - Images render as a rich, full-fidelity thumbnail photo card.
+ * - Documents render as a sleek, rounded pill card with type icon, filename, and download button.
  */
 export const MessageFileAttachment = memo(function MessageFileAttachment({
   id,
@@ -93,16 +76,13 @@ export const MessageFileAttachment = memo(function MessageFileAttachment({
   className,
 }: MessageFileAttachmentProps) {
   const [resigning, setResigning] = useState(false);
-  const isImage = getMediaCategory({ ...part, id }) === "image";
+  const isImage =
+    part.mediaType?.startsWith("image/") ||
+    /\.(png|jpe?g|webp|gif|svg)$/i.test(part.filename ?? "");
   const typeLabel = formatMediaType(part.mediaType);
   const sizeLabel =
     typeof part.size === "number" && part.size > 0 ? formatBytes(part.size) : null;
 
-  /**
-   * Presigned GETs expire, so a long-lived chat may hold a dead URL. Re-sign on
-   * demand rather than at render time — this only runs when the operator
-   * actually clicks.
-   */
   const handleDownload = useCallback(async () => {
     setResigning(true);
     try {
@@ -123,107 +103,119 @@ export const MessageFileAttachment = memo(function MessageFileAttachment({
   const isPending = status === "uploading";
   const hasError = status === "error";
 
-  const meta = (
-    <AttachmentInfo className="min-w-0 flex-1">
-      <span className="block truncate text-xs font-medium text-brand-ink">
-        {part.filename ?? "Attachment"}
-      </span>
-      {(typeLabel || sizeLabel) && (
-        <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-brand-muted-soft">
-          {typeLabel && (
-            <span className="font-mono uppercase tracking-wide">{typeLabel}</span>
-          )}
-          {typeLabel && sizeLabel && (
-            <span aria-hidden className="text-brand-rule">
-              ·
-            </span>
-          )}
-          {sizeLabel && <span>{sizeLabel}</span>}
-        </span>
-      )}
-    </AttachmentInfo>
-  );
+  // ChatGPT-style Image Card in Message History (Screenshot 4)
+  if (isImage && part.url) {
+    return (
+      <div
+        className={cn(
+          "group/img relative max-w-xs overflow-hidden rounded-2xl border border-black/10 bg-muted/20 shadow-xs transition-all hover:opacity-95 active:scale-[0.99] dark:border-white/10",
+          className
+        )}
+        onClick={handleDownload}
+        title={`View ${part.filename ?? "image"}`}
+      >
+        <img
+          src={part.url}
+          alt={part.filename ?? "Uploaded image"}
+          className="max-h-60 w-auto rounded-2xl object-cover"
+        />
+        <div className="absolute inset-0 flex items-end justify-between bg-gradient-to-t from-black/60 via-transparent to-transparent p-2.5 opacity-0 transition-opacity group-hover/img:opacity-100">
+          <span className="max-w-[180px] truncate text-xs font-medium text-white">
+            {part.filename ?? "Image"}
+          </span>
+          <div className="flex size-6 items-center justify-center rounded-full bg-black/60 text-white shadow-xs">
+            {resigning ? (
+              <RefreshCwIcon className="size-3 animate-spin" />
+            ) : (
+              <DownloadIcon className="size-3" />
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
+  // ChatGPT-style Document Card in Message History (Screenshot 4)
   return (
-    <AttachmentHoverCard>
-      <AttachmentHoverCardTrigger delay={200}>
-        <Attachment
-          data={{ ...part, id }}
-          onRemove={onRemove}
-          className={cn(
-            // `w-fit` keeps the card proportional to its content; `max-w-full`
-            // stops a long filename from overflowing narrow viewports. The list
-            // variant defaults to `w-full p-3`, which is what produced the
-            // oversized panel.
-            "w-fit max-w-full items-center gap-2.5 rounded-xl p-2",
-            // Upload problems are reported on the status line, so the card keeps
-            // the same neutral border either way.
-            "border border-brand-rule bg-brand-card/70",
-            "transition-colors hover:border-brand-accent/40 hover:bg-brand-cream/40",
-            className
-          )}
-        >
-          <AttachmentPreview
-            fallbackIcon={
-              <FileTextIcon className="size-4 text-brand-accent" />
+    <div
+      className={cn(
+        "group/attachment relative flex w-fit max-w-sm items-center gap-3 rounded-2xl p-2.5",
+        "border border-black/10 bg-black/5 shadow-2xs transition-colors hover:bg-black/8 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8",
+        className
+      )}
+      onClick={!onRemove ? handleDownload : undefined}
+    >
+      <div
+        className={cn(
+          "flex size-9 shrink-0 items-center justify-center rounded-xl",
+          typeLabel === "PDF"
+            ? "bg-rose-500/15 text-rose-600 dark:text-rose-400"
+            : typeLabel === "CSV" || typeLabel === "XLS" || typeLabel === "XLSX"
+              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+              : typeLabel === "JSON" || typeLabel === "JSONL"
+                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                : "bg-sky-500/15 text-sky-600 dark:text-sky-400"
+        )}
+      >
+        <FileTextIcon className="size-4" />
+      </div>
+
+      {isPending ? (
+        <Shimmer duration={1.4} className="min-w-0 flex-1 text-xs">
+          Uploading…
+        </Shimmer>
+      ) : hasError ? (
+        <p className="min-w-0 flex-1 text-xs leading-snug text-destructive">
+          {error ?? "Upload failed"}
+        </p>
+      ) : (
+        <>
+          <div className="flex min-w-0 flex-1 flex-col pr-1">
+            <span className="block truncate text-xs font-semibold text-brand-ink">
+              {part.filename ?? "Document"}
+            </span>
+            <span className="font-mono text-[11px] text-brand-muted-soft">
+              {typeLabel ?? "File"} {sizeLabel ? `· ${sizeLabel}` : ""}
+            </span>
+          </div>
+
+          <Button
+            aria-label={
+              onRemove
+                ? `Remove ${part.filename ?? "attachment"}`
+                : `Download ${part.filename ?? "attachment"}`
             }
             className={cn(
-              "size-8 rounded-lg border border-brand-rule-soft",
-              "bg-brand-cream/60",
-              isImage && "size-10"
+              "size-7 shrink-0 rounded-lg text-brand-muted-soft transition-all",
+              onRemove
+                ? "hover:bg-destructive/15 hover:text-destructive active:scale-95"
+                : "opacity-70 group-hover/attachment:opacity-100 hover:bg-brand-cream/60 hover:text-brand-ink"
             )}
-          />
-
-          {isPending ? (
-            <Shimmer duration={1.4} className="min-w-0 flex-1 text-xs">
-              Uploading…
-            </Shimmer>
-          ) : hasError ? (
-            <p className="min-w-0 flex-1 text-xs leading-snug text-destructive">
-              {error ?? "Upload failed"}
-            </p>
-          ) : (
-            <>
-              {meta}
-              <Button
-                aria-label={
-                  onRemove
-                    ? `Remove ${part.filename ?? "attachment"}`
-                    : `Download ${part.filename ?? "attachment"}`
-                }
-                className="size-7 shrink-0 rounded-lg text-brand-muted-soft hover:text-brand-ink opacity-0 transition-opacity focus-visible:opacity-100 group-hover/attachment:opacity-100"
-                disabled={resigning || isPending}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  if (onRemove) {
-                    onRemove();
-                    return;
-                  }
-                  void handleDownload();
-                }}
-                size="icon"
-                title={onRemove ? "Remove" : "Open"}
-                type="button"
-                variant="ghost"
-              >
-                {resigning ? (
-                  <RefreshCwIcon className="size-3.5 animate-spin" />
-                ) : onRemove ? (
-                  <XIcon className="size-3.5" />
-                ) : (
-                  <DownloadIcon className="size-3.5" />
-                )}
-              </Button>
-            </>
-          )}
-        </Attachment>
-      </AttachmentHoverCardTrigger>
-      <AttachmentHoverCardContent align="start">
-        <p className="max-w-56 truncate font-mono text-[11px] text-muted-foreground">
-          {part.filename ?? "attachment"}
-        </p>
-      </AttachmentHoverCardContent>
-    </AttachmentHoverCard>
+            disabled={resigning || isPending}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              if (onRemove) {
+                onRemove();
+                return;
+              }
+              void handleDownload();
+            }}
+            size="icon"
+            title={onRemove ? "Remove" : "Download"}
+            type="button"
+            variant="ghost"
+          >
+            {resigning ? (
+              <RefreshCwIcon className="size-3.5 animate-spin" />
+            ) : onRemove ? (
+              <XIcon className="size-3.5" />
+            ) : (
+              <DownloadIcon className="size-3.5" />
+            )}
+          </Button>
+        </>
+      )}
+    </div>
   );
 });

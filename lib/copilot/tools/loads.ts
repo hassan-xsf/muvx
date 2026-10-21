@@ -1,31 +1,82 @@
 import { z } from "zod"
 import { randomUUID } from "node:crypto"
-import { eq, and, or, desc, like } from "drizzle-orm"
+import { eq, and, or, desc, like, ilike } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { load, trip, invoice } from "@/lib/schema"
 import { recordAuditEvent } from "@/lib/audit"
 import { dispatchNotificationEvent } from "@/lib/notifications"
+import { normalizeSubdivisionCode } from "@/lib/geography"
 import { defineTmsTool, hasPermission, permissionDeniedResult } from "../types"
+
+const stopInputSchema = z.object({
+  facilityName: z.string().optional().describe("Facility or dock name"),
+  address: z.string().optional().describe("Street address"),
+  city: z.string().describe("City name"),
+  state: z.string().describe("State or province code"),
+  zip: z.string().optional().describe("Postal code"),
+  type: z.enum(["pickup", "delivery"]).describe("Stop type"),
+  appointmentDate: z.string().optional().describe("Appointment date/time"),
+  notes: z.string().optional().describe("Stop notes or special handling"),
+})
 
 export const bookLoadTool = defineTmsTool({
   name: "bookLoad",
-  description: "Book a new freight load into Muvx TMS with shipper, equipment, route, and linehaul rate.",
+  description:
+    "Book a comprehensive freight load into Muvx TMS with full origin/destination addresses, facility names, appointments, equipment specifications, pricing, miles, reefer temperature, and tender references.",
   requiredPermissions: ["loads.create"],
   inputSchema: z.object({
-    customerName: z.string().describe("Customer or broker name (e.g. Walmart, CH Robinson)"),
+    customerName: z.string().describe("Customer or broker name (e.g. Walmart, CH Robinson, TQL, Echo)"),
+    customerEmail: z.string().optional().describe("Customer contact/billing email"),
     loadNumber: z.string().optional().describe("Load/tender number (auto-generated if omitted)"),
+    tenderNumber: z.string().optional().describe("Shipper tender/order reference number"),
+    rateConfirmNumber: z.string().optional().describe("Rate confirmation agreement number"),
+    bolNumber: z.string().optional().describe("Bill of Lading reference number"),
+
+    // Origin (Pickup)
+    originFacility: z.string().optional().describe("Pickup facility or shipper name (e.g. Atlanta Cold Storage DC #4)"),
+    originAddress: z.string().optional().describe("Pickup street address (e.g. 1500 Logistics Parkway)"),
     originCity: z.string().describe("Pickup city"),
-    originState: z.string().describe("Pickup 2-letter state code (e.g. IL)"),
+    originState: z.string().describe("Pickup state or province code (e.g. GA, TX, ON)"),
+    originZip: z.string().optional().describe("Pickup postal/ZIP code (e.g. 30301)"),
+    originContact: z.string().optional().describe("Pickup dock or shipping contact name"),
+    originPhone: z.string().optional().describe("Pickup facility phone number"),
+    originAppointment: z.string().optional().describe("Pickup appointment timestamp or time window"),
+    pickupDate: z.string().optional().describe("Pickup date (YYYY-MM-DD)"),
+
+    // Destination (Delivery)
+    destFacility: z.string().optional().describe("Delivery facility or consignee name (e.g. Dallas Mega Fulfillment)"),
+    destAddress: z.string().optional().describe("Delivery street address (e.g. 8400 Horizon Boulevard)"),
     destCity: z.string().describe("Delivery city"),
-    destState: z.string().describe("Delivery 2-letter state code (e.g. TX)"),
-    rate: z.number().describe("Agreed linehaul rate amount in USD"),
+    destState: z.string().describe("Delivery state or province code (e.g. TX, IL, QC)"),
+    destZip: z.string().optional().describe("Delivery postal/ZIP code (e.g. 75201)"),
+    destContact: z.string().optional().describe("Delivery receiver contact name"),
+    destPhone: z.string().optional().describe("Delivery facility phone number"),
+    destAppointment: z.string().optional().describe("Delivery appointment timestamp or time window"),
+    deliveryDate: z.string().optional().describe("Delivery date (YYYY-MM-DD)"),
+
+    // Financials
+    rate: z.number().describe("Agreed total revenue / billing rate amount"),
+    customerRate: z.number().optional().describe("Customer billed amount (if different from base rate)"),
+    carrierRate: z.number().optional().describe("Target carrier pay / cost amount"),
+    currency: z.string().default("USD").describe("Currency code (USD, CAD)"),
+
+    // Cargo & Equipment
     equipmentType: z
       .enum(["Dry Van", "Reefer", "Flatbed", "Step Deck", "Power Only", "Box Truck"])
-      .default("Dry Van"),
-    commodity: z.string().optional().describe("Description of freight goods"),
-    weight: z.number().optional().describe("Total weight in lbs"),
-    pickupDate: z.string().optional().describe("YYYY-MM-DD pickup date"),
-    deliveryDate: z.string().optional().describe("YYYY-MM-DD delivery date"),
+      .default("Dry Van")
+      .describe("Trailer / equipment type"),
+    commodity: z.string().optional().describe("Cargo commodity description (e.g. Frozen Poultry, Paper Rolls)"),
+    weight: z.number().optional().describe("Total cargo weight in lbs"),
+    miles: z.number().optional().describe("Total loaded route trip miles"),
+    deadhead: z.number().optional().describe("Estimated empty deadhead miles"),
+
+    // Reefer & Handling Specs
+    temperature: z.string().optional().describe("Temperature setting for Reefer loads (e.g. -10°F Frozen, 34°F Continuous)"),
+    isRefrigerated: z.boolean().optional().describe("Whether load requires active refrigerated unit"),
+    specialInstructions: z.string().optional().describe("Dock hours, tarp, straps, PPE, or special instructions"),
+
+    // Multi-stop route
+    stops: z.array(stopInputSchema).optional().describe("Optional intermediate stops along the route"),
   }),
   execute: async (params, ctx) => {
     if (!hasPermission(ctx, ["loads.create", "loads.edit"])) {
@@ -33,26 +84,85 @@ export const bookLoadTool = defineTmsTool({
     }
 
     const loadId = randomUUID()
-    const loadNum = params.loadNumber || `LD-${Math.floor(100000 + Math.random() * 900000)}`
+    const loadNum = params.loadNumber?.trim() || `LD-${Math.floor(100000 + Math.random() * 900000)}`
+
+    // Dynamically normalize state codes to official ISO 2-letter postal standard
+    const originState = normalizeSubdivisionCode("US", params.originState)
+    const destState = normalizeSubdivisionCode("US", params.destState)
+
+    const isReefer =
+      params.isRefrigerated ??
+      (params.equipmentType === "Reefer" || Boolean(params.temperature))
+
+    const customerRateNum = params.customerRate ?? params.rate
+    const carrierRateNum = params.carrierRate ?? null
+    const targetProfit =
+      carrierRateNum && customerRateNum > carrierRateNum
+        ? (customerRateNum - carrierRateNum).toFixed(2)
+        : null
+
+    const pickupDateTime = params.originAppointment
+      ? new Date(params.originAppointment)
+      : params.pickupDate
+      ? new Date(params.pickupDate)
+      : new Date()
+
+    const deliveryDateTime = params.destAppointment
+      ? new Date(params.destAppointment)
+      : params.deliveryDate
+      ? new Date(params.deliveryDate)
+      : null
 
     await db.insert(load).values({
       id: loadId,
       tenantId: ctx.tenantId,
       loadNumber: loadNum,
       customerName: params.customerName,
+      customerEmail: params.customerEmail ?? null,
       status: "available",
+      tenderNumber: params.tenderNumber ?? null,
+      rateConfirmNumber: params.rateConfirmNumber ?? null,
+      bolNumber: params.bolNumber ?? null,
+
+      // Origin
+      originAddress: params.originAddress ?? null,
       originCity: params.originCity,
-      originState: params.originState,
+      originState,
+      originZip: params.originZip ?? null,
+      originContact: params.originContact || params.originFacility || null,
+      originPhone: params.originPhone ?? null,
+      originAppointment: pickupDateTime,
+      pickupDate: pickupDateTime,
+
+      // Destination
+      destAddress: params.destAddress ?? null,
       destCity: params.destCity,
-      destState: params.destState,
+      destState,
+      destZip: params.destZip ?? null,
+      destContact: params.destContact || params.destFacility || null,
+      destPhone: params.destPhone ?? null,
+      destAppointment: deliveryDateTime,
+      deliveryDate: deliveryDateTime,
+
+      // Freight & Rates
       loadType: params.equipmentType,
       commodity: params.commodity ?? null,
       weight: params.weight ? String(params.weight) : null,
       rate: String(params.rate),
+      customerRate: String(customerRateNum),
+      carrierRate: carrierRateNum ? String(carrierRateNum) : null,
+      targetProfit,
       finalRate: String(params.rate),
-      currency: "USD",
-      pickupDate: params.pickupDate ? new Date(params.pickupDate) : new Date(),
-      deliveryDate: params.deliveryDate ? new Date(params.deliveryDate) : null,
+      currency: params.currency || "USD",
+      miles: params.miles ? String(params.miles) : null,
+      deadhead: params.deadhead ? String(params.deadhead) : null,
+
+      // Specs
+      temperature: params.temperature ?? null,
+      isRefrigerated: isReefer,
+      specialInstructions: params.specialInstructions ?? null,
+      stops: params.stops && params.stops.length > 0 ? JSON.stringify(params.stops) : null,
+      isStarred: false,
     })
 
     await recordAuditEvent({
@@ -62,7 +172,9 @@ export const bookLoadTool = defineTmsTool({
       metadata: {
         customer: params.customerName,
         rate: params.rate,
-        lane: `${params.originCity}, ${params.originState} -> ${params.destCity}, ${params.destState}`,
+        origin: `${params.originCity}, ${originState}`,
+        destination: `${params.destCity}, ${destState}`,
+        equipment: params.equipmentType,
         tenantId: ctx.tenantId,
       },
     })
@@ -82,11 +194,34 @@ export const bookLoadTool = defineTmsTool({
       loadId,
       loadNumber: loadNum,
       customerName: params.customerName,
-      origin: `${params.originCity}, ${params.originState}`,
-      destination: `${params.destCity}, ${params.destState}`,
+      customerEmail: params.customerEmail,
+      tenderNumber: params.tenderNumber,
+      rateConfirmNumber: params.rateConfirmNumber,
+      originFacility: params.originFacility,
+      originAddress: params.originAddress,
+      originCity: params.originCity,
+      originState,
+      originZip: params.originZip,
+      originAppointment: params.originAppointment,
+      pickupDate: params.pickupDate,
+      destFacility: params.destFacility,
+      destAddress: params.destAddress,
+      destCity: params.destCity,
+      destState,
+      destZip: params.destZip,
+      destAppointment: params.destAppointment,
+      deliveryDate: params.deliveryDate,
+      equipmentType: params.equipmentType,
+      commodity: params.commodity,
+      weight: params.weight ? `${params.weight.toLocaleString()} lbs` : undefined,
+      miles: params.miles ? `${params.miles.toLocaleString()} mi` : undefined,
+      temperature: params.temperature,
+      isRefrigerated: isReefer,
       rate: `$${params.rate.toLocaleString()}`,
+      currency: params.currency || "USD",
+      specialInstructions: params.specialInstructions,
       status: "available",
-      message: `Load #${loadNum} booked successfully. Ready for driver dispatch.`,
+      message: `Load #${loadNum} booked into TMS with complete origin/destination, cargo, and pricing details.`,
     }
   },
 })
@@ -121,14 +256,23 @@ export const queryLoadsTool = defineTmsTool({
         loadNumber: load.loadNumber,
         status: load.status,
         customerName: load.customerName,
+        originAddress: load.originAddress,
         originCity: load.originCity,
         originState: load.originState,
+        originZip: load.originZip,
+        destAddress: load.destAddress,
         destCity: load.destCity,
         destState: load.destState,
+        destZip: load.destZip,
         rate: load.rate,
         currency: load.currency,
         loadType: load.loadType,
+        commodity: load.commodity,
+        weight: load.weight,
+        miles: load.miles,
+        temperature: load.temperature,
         pickupDate: load.pickupDate,
+        deliveryDate: load.deliveryDate,
         podSigned: load.podSigned,
         bolReceived: load.bolReceived,
       })
@@ -144,11 +288,19 @@ export const queryLoadsTool = defineTmsTool({
         loadNumber: r.loadNumber,
         customer: r.customerName || "Unknown Customer",
         origin: `${r.originCity || "Unknown"}, ${r.originState || ""}`,
+        originAddress: r.originAddress || undefined,
+        originZip: r.originZip || undefined,
         destination: `${r.destCity || "Unknown"}, ${r.destState || ""}`,
+        destAddress: r.destAddress || undefined,
+        destZip: r.destZip || undefined,
         status: r.status,
         equipment: r.loadType || "Dry Van",
+        commodity: r.commodity || undefined,
+        weight: r.weight ? `${r.weight} lbs` : undefined,
+        miles: r.miles ? `${r.miles} mi` : undefined,
         rate: r.rate ? `$${parseFloat(r.rate).toLocaleString()}` : "Pending",
         pickupDate: r.pickupDate ? new Date(r.pickupDate).toLocaleDateString() : "TBD",
+        deliveryDate: r.deliveryDate ? new Date(r.deliveryDate).toLocaleDateString() : "TBD",
         podSigned: r.podSigned ?? false,
         bolReceived: r.bolReceived ?? false,
       })),
@@ -158,20 +310,48 @@ export const queryLoadsTool = defineTmsTool({
 
 export const updateLoadTool = defineTmsTool({
   name: "updateLoad",
-  description: "Update details or status of an existing freight load.",
+  description: "Update details, customer, facilities, route, equipment, rates, or status of an existing freight load.",
   requiredPermissions: ["loads.edit"],
   inputSchema: z.object({
-    loadId: z.string().describe("ID of the load to update"),
+    loadIdentifier: z.string().optional().describe("Load ID (UUID) or Load Number (e.g. 'LD-1001')"),
+    loadId: z.string().optional().describe("Load UUID if known"),
     status: z
       .enum(["available", "booked", "dispatched", "in_transit", "delivered", "completed", "cancelled"])
       .optional()
       .describe("New load status"),
     rate: z.number().optional().describe("Updated linehaul rate amount in USD"),
+    customerRate: z.number().optional().describe("Updated customer rate amount"),
+    carrierRate: z.number().optional().describe("Updated carrier rate amount"),
     customerName: z.string().optional().describe("Updated customer name"),
+    originFacility: z.string().optional().describe("Updated shipper or facility name"),
+    originAddress: z.string().optional().describe("Updated origin street address"),
+    originCity: z.string().optional().describe("Updated origin city"),
+    originState: z.string().optional().describe("Updated origin state code"),
+    originZip: z.string().optional().describe("Updated origin postal/ZIP code"),
+    originContact: z.string().optional().describe("Updated origin contact person"),
+    originPhone: z.string().optional().describe("Updated origin contact phone"),
+    originAppointment: z.string().optional().describe("Updated origin appointment ISO string"),
+    destFacility: z.string().optional().describe("Updated receiver facility name"),
+    destAddress: z.string().optional().describe("Updated destination street address"),
+    destCity: z.string().optional().describe("Updated destination city"),
+    destState: z.string().optional().describe("Updated destination state code"),
+    destZip: z.string().optional().describe("Updated destination postal/ZIP code"),
+    destContact: z.string().optional().describe("Updated destination contact person"),
+    destPhone: z.string().optional().describe("Updated destination contact phone"),
+    destAppointment: z.string().optional().describe("Updated destination appointment ISO string"),
     pickupDate: z.string().optional().describe("YYYY-MM-DD pickup date"),
     deliveryDate: z.string().optional().describe("YYYY-MM-DD delivery date"),
+    equipmentType: z
+      .enum(["Dry Van", "Reefer", "Flatbed", "Step Deck", "Power Only", "Box Truck"])
+      .optional(),
     commodity: z.string().optional().describe("Description of goods"),
     weight: z.number().optional().describe("Weight in lbs"),
+    miles: z.number().optional().describe("Total route miles"),
+    temperature: z.string().optional().describe("Reefer temperature setting"),
+    isRefrigerated: z.boolean().optional(),
+    tenderNumber: z.string().optional().describe("Updated tender reference number"),
+    rateConfirmNumber: z.string().optional().describe("Updated rate confirmation reference number"),
+    bolNumber: z.string().optional().describe("Updated BOL number"),
     specialInstructions: z.string().optional().describe("Special dock or handling instructions"),
   }),
   execute: async (params, ctx) => {
@@ -179,33 +359,76 @@ export const updateLoadTool = defineTmsTool({
       return permissionDeniedResult(["loads.edit"])
     }
 
+    const identifier = params.loadId || params.loadIdentifier
+    if (!identifier) {
+      return { success: false, error: "Please specify loadId or loadIdentifier (e.g. 'LD-1001')." }
+    }
+
     const [existing] = await db
       .select()
       .from(load)
-      .where(and(eq(load.id, params.loadId), eq(load.tenantId, ctx.tenantId)))
+      .where(
+        and(
+          eq(load.tenantId, ctx.tenantId),
+          or(
+            eq(load.id, identifier),
+            eq(load.loadNumber, identifier),
+            ilike(load.loadNumber, `%${identifier}%`)
+          )
+        )
+      )
       .limit(1)
 
     if (!existing) {
-      return { success: false, error: "Load not found or unauthorized." }
+      return { success: false, error: `Load '${identifier}' not found or unauthorized.` }
     }
 
-    const updates: Record<string, any> = {}
+    const updates: Record<string, any> = { updatedAt: new Date() }
     if (params.status) updates.status = params.status
     if (params.rate !== undefined) {
       updates.rate = String(params.rate)
       updates.finalRate = String(params.rate)
     }
+    if (params.customerRate !== undefined) updates.customerRate = String(params.customerRate)
+    if (params.carrierRate !== undefined) updates.carrierRate = String(params.carrierRate)
     if (params.customerName) updates.customerName = params.customerName
+    if (params.originFacility !== undefined) updates.originFacility = params.originFacility
+    if (params.originAddress !== undefined) updates.originAddress = params.originAddress
+    if (params.originCity !== undefined) updates.originCity = params.originCity
+    if (params.originState !== undefined) {
+      updates.originState = normalizeSubdivisionCode("US", params.originState)
+    }
+    if (params.originZip !== undefined) updates.originZip = params.originZip
+    if (params.originContact !== undefined) updates.originContact = params.originContact
+    if (params.originPhone !== undefined) updates.originPhone = params.originPhone
+    if (params.originAppointment) updates.originAppointment = new Date(params.originAppointment)
+    if (params.destFacility !== undefined) updates.destFacility = params.destFacility
+    if (params.destAddress !== undefined) updates.destAddress = params.destAddress
+    if (params.destCity !== undefined) updates.destCity = params.destCity
+    if (params.destState !== undefined) {
+      updates.destState = normalizeSubdivisionCode("US", params.destState)
+    }
+    if (params.destZip !== undefined) updates.destZip = params.destZip
+    if (params.destContact !== undefined) updates.destContact = params.destContact
+    if (params.destPhone !== undefined) updates.destPhone = params.destPhone
+    if (params.destAppointment) updates.destAppointment = new Date(params.destAppointment)
     if (params.pickupDate) updates.pickupDate = new Date(params.pickupDate)
     if (params.deliveryDate) updates.deliveryDate = new Date(params.deliveryDate)
-    if (params.commodity) updates.commodity = params.commodity
+    if (params.equipmentType) updates.loadType = params.equipmentType
+    if (params.commodity !== undefined) updates.commodity = params.commodity
     if (params.weight !== undefined) updates.weight = String(params.weight)
-    if (params.specialInstructions) updates.specialInstructions = params.specialInstructions
+    if (params.miles !== undefined) updates.miles = String(params.miles)
+    if (params.temperature !== undefined) updates.temperature = params.temperature
+    if (params.isRefrigerated !== undefined) updates.isRefrigerated = params.isRefrigerated
+    if (params.tenderNumber !== undefined) updates.tenderNumber = params.tenderNumber
+    if (params.rateConfirmNumber !== undefined) updates.rateConfirmNumber = params.rateConfirmNumber
+    if (params.bolNumber !== undefined) updates.bolNumber = params.bolNumber
+    if (params.specialInstructions !== undefined) updates.specialInstructions = params.specialInstructions
 
     await db
       .update(load)
       .set(updates)
-      .where(and(eq(load.id, params.loadId), eq(load.tenantId, ctx.tenantId)))
+      .where(and(eq(load.id, existing.id), eq(load.tenantId, ctx.tenantId)))
 
     await recordAuditEvent({
       actor: { id: ctx.userId, email: ctx.userEmail },
@@ -218,7 +441,7 @@ export const updateLoadTool = defineTmsTool({
       success: true,
       loadId: existing.id,
       loadNumber: existing.loadNumber,
-      updatedFields: Object.keys(updates),
+      updatedFields: Object.keys(updates).filter((k) => k !== "updatedAt"),
       status: params.status || existing.status,
       message: `Load #${existing.loadNumber} updated successfully.`,
     }
@@ -329,4 +552,3 @@ export const deleteLoadTool = defineTmsTool({
     }
   },
 })
-

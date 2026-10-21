@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { AddressAutocompleteInput } from "./address-autocomplete-input"
+import { normalizeSubdivisionCode } from "@/lib/geography"
 
 interface EditLoadDialogProps {
   load: {
@@ -255,7 +256,9 @@ export function EditLoadDialog({ load, trigger }: EditLoadDialogProps) {
                 onSelectAddress={(data) => {
                   setOriginAddress(data.address)
                   if (data.city) setOriginCity(data.city)
-                  if (data.state) setOriginState(data.state)
+                  if (data.state) {
+                    setOriginState(normalizeSubdivisionCode(data.country || "US", data.state))
+                  }
                 }}
                 placeholder="Street address (Google Places / Autocomplete)"
                 className="h-9 text-xs"
@@ -290,7 +293,9 @@ export function EditLoadDialog({ load, trigger }: EditLoadDialogProps) {
                 onSelectAddress={(data) => {
                   setDestAddress(data.address)
                   if (data.city) setDestCity(data.city)
-                  if (data.state) setDestState(data.state)
+                  if (data.state) {
+                    setDestState(normalizeSubdivisionCode(data.country || "US", data.state))
+                  }
                 }}
                 placeholder="Street address (Google Places / Autocomplete)"
                 className="h-9 text-xs"

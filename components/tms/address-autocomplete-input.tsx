@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { MapPin, Loader2 } from "lucide-react"
+import { MapPin, Loader2, Building2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export interface SelectedAddressData {
@@ -10,6 +10,7 @@ export interface SelectedAddressData {
   state: string
   zip: string
   country: string
+  facilityName?: string
 }
 
 interface AddressSuggestion {
@@ -17,11 +18,13 @@ interface AddressSuggestion {
   description: string
   mainText: string
   secondaryText: string
+  address?: string
   city?: string
   state?: string
   zip?: string
   country?: string
-  source: "google" | "photon"
+  facilityName?: string
+  source: "google" | "photon" | "nominatim"
 }
 
 interface AddressAutocompleteInputProps {
@@ -93,7 +96,7 @@ export function AddressAutocompleteInput({
       } finally {
         setIsLoading(false)
       }
-    }, 250)
+    }, 200)
 
     return () => {
       clearTimeout(timer)
@@ -116,19 +119,21 @@ export function AddressAutocompleteInput({
     setIsOpen(false)
 
     // If Google placeId, fetch full details for precise components
-    if (s.source === "google" && !s.id.startsWith("photon-")) {
+    if (s.source === "google" && !s.id.startsWith("photon-") && !s.id.startsWith("osm-")) {
       setIsLoading(true)
       try {
         const res = await fetch(`/api/places/details?placeId=${encodeURIComponent(s.id)}`)
         if (res.ok) {
           const details = await res.json()
-          onChange(details.address || s.mainText)
+          const finalAddress = details.address || s.address || s.mainText
+          onChange(finalAddress)
           onSelectAddress({
-            address: details.address || s.mainText,
+            address: finalAddress,
             city: details.city || s.city || "",
             state: details.state || s.state || "",
             zip: details.zip || s.zip || "",
             country: details.country || s.country || "US",
+            facilityName: details.facilityName || s.facilityName,
           })
           return
         }
@@ -139,14 +144,16 @@ export function AddressAutocompleteInput({
       }
     }
 
-    // Default or Photon suggestion selection
-    onChange(s.mainText || s.description)
+    // Direct structured suggestion (Photon / Nominatim)
+    const finalAddress = s.address || s.mainText || s.description
+    onChange(finalAddress)
     onSelectAddress({
-      address: s.mainText || s.description,
+      address: finalAddress,
       city: s.city || "",
       state: s.state || "",
       zip: s.zip || "",
       country: s.country || "US",
+      facilityName: s.facilityName,
     })
   }
 
@@ -194,7 +201,7 @@ export function AddressAutocompleteInput({
 
       {isOpen && suggestions.length > 0 && (
         <ul
-          className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-brand-rule bg-white py-1 shadow-lg dark:bg-zinc-900 text-xs"
+          className="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-brand-rule bg-white py-1 shadow-xl dark:bg-zinc-900 text-xs"
           role="listbox"
         >
           {suggestions.map((s, idx) => {
@@ -210,16 +217,27 @@ export function AddressAutocompleteInput({
                 }}
                 onMouseEnter={() => setHighlightedIndex(idx)}
                 className={cn(
-                  "flex items-start gap-2.5 px-3 py-2 cursor-pointer transition-colors text-left",
+                  "flex items-start gap-2.5 px-3 py-2 cursor-pointer transition-colors text-left border-b border-brand-rule/30 last:border-b-0",
                   isHighlighted
                     ? "bg-brand-cream-soft dark:bg-zinc-800 text-brand-ink dark:text-brand-cream"
                     : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
                 )}
               >
-                <MapPin className="size-3.5 mt-0.5 shrink-0 text-[#d9622b]" />
+                {s.facilityName ? (
+                  <Building2 className="size-3.5 mt-0.5 shrink-0 text-[#d9622b]" />
+                ) : (
+                  <MapPin className="size-3.5 mt-0.5 shrink-0 text-[#d9622b]" />
+                )}
                 <div className="min-w-0 flex-1">
-                  <div className="font-medium text-brand-ink dark:text-brand-cream truncate">
-                    {s.mainText}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-medium text-brand-ink dark:text-brand-cream truncate">
+                      {s.mainText}
+                    </span>
+                    {s.state && (
+                      <span className="rounded bg-brand-cream-soft px-1.5 py-0.5 text-[9px] font-mono font-medium text-brand-muted uppercase border border-brand-rule/60">
+                        {s.state}{s.zip ? ` ${s.zip}` : ""}
+                      </span>
+                    )}
                   </div>
                   {s.secondaryText && (
                     <div className="text-[11px] text-zinc-500 truncate mt-0.5">

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 import { getSession } from "@/lib/dal"
-import { IntegrationsClient } from "@/components/settings/integrations-client"
+import { IntegrationsHubClient } from "@/components/settings/integrations"
 
 export default async function IntegrationsPage() {
   const session = await getSession()
@@ -8,7 +8,7 @@ export default async function IntegrationsPage() {
   const tenantId = session.session.activeOrganizationId
   if (!tenantId) redirect("/onboarding")
 
-  return <IntegrationsClient />
+  return <IntegrationsHubClient />
 }
 
 export const instant = false

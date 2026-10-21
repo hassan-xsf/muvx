@@ -12,6 +12,7 @@ import {
 // Trips & Dispatch domain
 import {
   dispatchTripTool,
+  updateTripTool,
   updateTripStatusTool,
 } from "./trips"
 
@@ -23,18 +24,21 @@ import {
   createTruckTool,
   updateTruckTool,
   createTrailerTool,
+  updateTrailerTool,
 } from "./fleet"
 
 // Customers & Shippers domain
 import {
   queryCustomersTool,
   createCustomerTool,
+  updateCustomerTool,
 } from "./customers"
 
 // Partner Carriers domain
 import {
   queryCarriersTool,
   createCarrierTool,
+  updateCarrierTool,
 } from "./carriers"
 
 // Invoices & Billing domain
@@ -110,6 +114,7 @@ export const ALL_TMS_TOOLS: TmsToolDef<any, any>[] = [
 
   // 2. Trips & Dispatch
   dispatchTripTool,
+  updateTripTool,
   updateTripStatusTool,
 
   // 3. Fleet & Compliance
@@ -119,14 +124,17 @@ export const ALL_TMS_TOOLS: TmsToolDef<any, any>[] = [
   createTruckTool,
   updateTruckTool,
   createTrailerTool,
+  updateTrailerTool,
 
   // 4. Customers & Shippers
   queryCustomersTool,
   createCustomerTool,
+  updateCustomerTool,
 
   // 5. Partner Carriers
   queryCarriersTool,
   createCarrierTool,
+  updateCarrierTool,
 
   // 6. Invoices & Billing
   queryInvoicesTool,

@@ -90,11 +90,17 @@ function TraceLines() {
 
 /* ── Email card ───────────────────────────────────────────────────────────── */
 
-function EmailCard() {
+function EmailCard({ isMobile }: { isMobile?: boolean }) {
   return (
-    <div className="absolute left-[40px] top-[40px] flex h-[580px] w-[520px] flex-col rounded-[18px] border border-[#dcd5c9] bg-[#fffefb] shadow-[0_10px_30px_rgba(58,46,30,0.07)]">
+    <div
+      className={
+        isMobile
+          ? "flex flex-col rounded-[18px] border border-[#dcd5c9] bg-[#fffefb] shadow-[0_10px_30px_rgba(58,46,30,0.07)] w-full max-w-[520px] mx-auto min-h-[560px] overflow-hidden"
+          : "absolute left-[40px] top-[40px] flex h-[610px] w-[520px] flex-col rounded-[18px] border border-[#dcd5c9] bg-[#fffefb] shadow-[0_10px_30px_rgba(58,46,30,0.07)] overflow-hidden"
+      }
+    >
       {/* Header */}
-      <div className="flex items-center justify-between px-7 pt-6">
+      <div className="flex items-center justify-between px-5 pt-5 sm:px-7 sm:pt-6">
         <span className="font-geist-mono text-[10px] font-medium tracking-[0.04em] text-[#8a8b8f]">
           INBOX · SHIPPING@
         </span>
@@ -102,10 +108,12 @@ function EmailCard() {
       </div>
 
       {/* Subject */}
-      <p className="mt-3 px-7 font-serif text-[28px] text-[#16181d]">Truck Thu? Chicago → Dallas</p>
+      <p className="mt-2.5 px-5 sm:px-7 font-serif text-[24px] sm:text-[26px] text-[#16181d] leading-snug">
+        Truck Thu? Chicago → Dallas
+      </p>
 
       {/* Sender */}
-      <div className="mt-3 flex items-center gap-2.5 px-7">
+      <div className="mt-2.5 flex items-center gap-2.5 px-5 sm:px-7">
         <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[#dbeafe]">
           <span className="font-geist-mono text-[9px] font-medium tracking-[0.04em] text-[#2f4b7c]">
             JR
@@ -120,42 +128,43 @@ function EmailCard() {
       </div>
 
       {/* Divider */}
-      <div className="mx-7 mt-4 border-t border-[#dcd5c9]" />
+      <div className="mx-5 sm:mx-7 mt-3.5 border-t border-[#dcd5c9]" />
 
       {/* Body */}
-      <div className="space-y-6 px-7 pt-6 font-geist text-base leading-[34px] text-[#4a4e57]">
-        <p>Hi team —</p>
-        <p>
+      <div className="px-5 sm:px-7 pt-3.5 sm:pt-4 font-geist text-sm sm:text-[15px] text-[#4a4e57]">
+        <p className="mb-1 text-sm sm:text-base leading-normal">Hi team —</p>
+        <p className="leading-[30px] sm:leading-[34px]">
           Can you cover <K>22 pallets</K> of dry grocery,
         </p>
-        <p>
+        <p className="leading-[30px] sm:leading-[34px]">
           about <K>36,000 lbs</K>, picking up <K>Thursday</K>
         </p>
-        <p>
+        <p className="leading-[30px] sm:leading-[34px]">
           <K>7–11am</K> from our <K>Chicago DC (4800 S Kedzie)</K>?
         </p>
-        <p>
+        <p className="leading-[30px] sm:leading-[34px]">
           Delivers to <K>Northwind Dallas, 2201 Irving Blvd</K>,
         </p>
-        <p>
+        <p className="leading-[30px] sm:leading-[34px]">
           by <K>Friday 2pm</K>. <K>53′ dry van, no hazmat</K>.
         </p>
-        <p>
+        <p className="leading-[30px] sm:leading-[34px]">
           Same PO format as usual — <K>NW-44102</K>.
         </p>
-        <p>Thanks,</p>
-        <p>Jenna</p>
+        <p className="mt-2 text-sm sm:text-base leading-normal">
+          Thanks,<br />Jenna
+        </p>
       </div>
 
       {/* Attachment */}
-      <div className="mx-7 mt-auto mb-6 flex items-center gap-2.5 rounded-xl bg-[#f5f2ec] px-3.5 py-3">
+      <div className="mx-5 sm:mx-7 mt-auto mb-4 sm:mb-5 flex items-center gap-2.5 rounded-xl bg-[#f5f2ec] px-3.5 py-2.5">
         <span className="rounded-md bg-[#d9622b]/10 px-1.5 py-1 font-geist-mono text-[9px] font-medium tracking-[0.04em] text-[#d9622b]">
           PDF
         </span>
-        <span className="font-geist text-[13px] font-medium text-[#16181d]">
+        <span className="font-geist text-[13px] font-medium text-[#16181d] truncate">
           BOL_template_NW.pdf
         </span>
-        <span className="font-geist-mono text-[10px] tracking-[0.04em] text-[#8a8b8f]">84 KB</span>
+        <span className="ml-auto shrink-0 font-geist-mono text-[10px] tracking-[0.04em] text-[#8a8b8f]">84 KB</span>
       </div>
     </div>
   );
@@ -173,11 +182,17 @@ const FIELDS = [
   { label: "REFERENCE", value: "PO NW-44102", pct: "99%" },
 ] as const;
 
-function LoadDraftCard() {
+function LoadDraftCard({ isMobile }: { isMobile?: boolean }) {
   return (
-    <div className="absolute left-[752px] top-[40px] flex h-[580px] w-[520px] flex-col rounded-[18px] border border-[#dcd5c9] bg-[#fffefb] shadow-[0_10px_30px_rgba(58,46,30,0.07)]">
+    <div
+      className={
+        isMobile
+          ? "flex flex-col rounded-[18px] border border-[#dcd5c9] bg-[#fffefb] shadow-[0_10px_30px_rgba(58,46,30,0.07)] w-full max-w-[520px] mx-auto min-h-[560px] overflow-hidden"
+          : "absolute left-[752px] top-[40px] flex h-[610px] w-[520px] flex-col rounded-[18px] border border-[#dcd5c9] bg-[#fffefb] shadow-[0_10px_30px_rgba(58,46,30,0.07)] overflow-hidden"
+      }
+    >
       {/* Header */}
-      <div className="flex items-center justify-between px-7 pt-6">
+      <div className="flex items-center justify-between px-5 pt-5 sm:px-7 sm:pt-6">
         <span className="font-geist-mono text-[10px] font-medium tracking-[0.04em] text-[#8a8b8f]">
           LOAD L-20431 · DRAFT
         </span>
@@ -190,23 +205,25 @@ function LoadDraftCard() {
       </div>
 
       {/* Title */}
-      <p className="mt-3 px-7 font-serif text-[28px] text-[#16181d]">Chicago → Dallas, Thursday</p>
-      <p className="mt-1 px-7 font-geist text-xs text-[#8a8b8f]">
+      <p className="mt-2.5 px-5 sm:px-7 font-serif text-[24px] sm:text-[26px] text-[#16181d] leading-snug">
+        Chicago → Dallas, Thursday
+      </p>
+      <p className="mt-0.5 px-5 sm:px-7 font-geist text-xs text-[#8a8b8f]">
         Northwind Retail · matched to existing customer
       </p>
 
       {/* Divider */}
-      <div className="mx-7 mt-4 border-t border-[#dcd5c9]" />
+      <div className="mx-5 sm:mx-7 mt-3.5 border-t border-[#dcd5c9]" />
 
       {/* Fields */}
-      <div className="space-y-1 px-7 pt-4">
+      <div className="space-y-0.5 px-5 sm:px-7 pt-2.5 sm:pt-3">
         {FIELDS.map((f) => (
-          <div key={f.label} className="flex items-baseline gap-3 py-[3px]">
+          <div key={f.label} className="flex items-baseline gap-3 py-[2px] sm:py-[2.5px]">
             <div className="min-w-0 flex-1">
               <p className="font-geist-mono text-[9px] font-medium tracking-[0.04em] text-[#8a8b8f]">
                 {f.label}
               </p>
-              <p className="truncate font-geist text-[15px] font-medium text-[#16181d]">
+              <p className="truncate font-geist text-[14px] sm:text-[15px] font-medium text-[#16181d]">
                 {f.value}
               </p>
             </div>
@@ -218,25 +235,25 @@ function LoadDraftCard() {
       </div>
 
       {/* Flag — missing appointment */}
-      <div className="mx-7 mt-3 flex items-center gap-2.5 rounded-xl border border-[#d9622b]/35 bg-[#d9622b]/[0.08] px-3.5 py-2.5">
+      <div className="mx-5 sm:mx-7 mt-2 flex items-center gap-2.5 rounded-xl border border-[#d9622b]/35 bg-[#d9622b]/[0.08] px-3.5 py-2">
         <div className="min-w-0 flex-1">
           <p className="font-geist-mono text-[9px] font-medium tracking-[0.04em] text-[#d9622b]">
             NOT IN EMAIL · APPOINTMENT
           </p>
-          <p className="font-geist text-[13px] text-[#16181d]">
+          <p className="font-geist text-xs sm:text-[13px] text-[#16181d]">
             No delivery slot mentioned. I'll request one from Northwind.
           </p>
         </div>
-        <button className="shrink-0 rounded-full bg-[#16181d] px-3 py-1.5 font-geist text-xs font-medium text-[#f5f2ec]">
+        <button className="shrink-0 rounded-full bg-[#16181d] px-3 py-1 font-geist text-xs font-medium text-[#f5f2ec]">
           OK
         </button>
       </div>
 
       {/* Footer — price + CTA */}
-      <div className="mt-auto flex items-center gap-2.5 px-7 pb-6 pt-4">
-        <span className="font-serif text-[30px] text-[#16181d]">$2,640</span>
+      <div className="mt-auto flex items-center gap-2.5 px-5 sm:px-7 pb-4 sm:pb-5 pt-3">
+        <span className="font-serif text-[26px] sm:text-[30px] text-[#16181d]">$2,640</span>
         <span className="flex-1 font-geist text-xs text-[#8a8b8f]">suggested · 72% win odds</span>
-        <button className="inline-flex items-center gap-2 rounded-full bg-[#16181d] px-4 py-2.5 font-geist text-[13px] font-medium text-[#f5f2ec] transition-colors hover:bg-[#2a2d35]">
+        <button className="inline-flex items-center gap-2 rounded-full bg-[#16181d] px-3.5 sm:px-4 py-2 font-geist text-xs sm:text-[13px] font-medium text-[#f5f2ec] transition-colors hover:bg-[#2a2d35]">
           Send quote <span aria-hidden="true">→</span>
         </button>
       </div>
@@ -259,10 +276,11 @@ export default function EmailToLoad() {
 
       <Tabs />
 
-      {/* Demo area — fixed-width canvas, scrolls on small screens */}
-      <div className="overflow-x-auto px-6 md:px-16">
+      {/* Demo area — responsive: stacked on mobile/tablet, side-by-side with trace lines on desktop */}
+      <div className="px-6 md:px-16">
+        {/* Desktop View (>= 1280px) */}
         <div
-          className="relative h-[660px] min-w-[1312px] overflow-hidden rounded-[28px] bg-[#ede8df]"
+          className="relative mx-auto hidden h-[690px] w-[1312px] overflow-hidden rounded-[28px] bg-[#ede8df] xl:block"
           style={{
             backgroundImage: "radial-gradient(circle, #c5bfb6 1px, transparent 1px)",
             backgroundSize: "32px 32px",
@@ -274,14 +292,38 @@ export default function EmailToLoad() {
           <LoadDraftCard />
 
           {/* Speed badge */}
-          <div className="absolute bottom-[34px] left-1/2 -translate-x-1/2">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-[#dcd5c9] bg-[#fffefb] px-3 py-1.5">
+          <div className="absolute bottom-[20px] left-1/2 -translate-x-1/2">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-[#dcd5c9] bg-[#fffefb] px-3 py-1.5 shadow-sm">
               <span className="size-1.5 rounded-full bg-[#5e8c6a]" />
               <span className="font-geist-mono text-[10px] font-medium tracking-[0.04em] text-[#16181d]">
                 4.1 s
               </span>
             </div>
           </div>
+        </div>
+
+        {/* Mobile & Tablet View (< 1280px) */}
+        <div
+          className="relative flex flex-col gap-5 sm:gap-6 overflow-hidden rounded-[24px] bg-[#ede8df] p-4 sm:p-6 xl:hidden"
+          style={{
+            backgroundImage: "radial-gradient(circle, #c5bfb6 1px, transparent 1px)",
+            backgroundSize: "32px 32px",
+            backgroundPosition: "24px 24px",
+          }}
+        >
+          <EmailCard isMobile />
+
+          {/* Middle Extraction Badge on mobile */}
+          <div className="flex items-center justify-center py-1">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#dcd5c9] bg-[#fffefb] px-4 py-2 shadow-sm">
+              <span className="size-2 rounded-full bg-[#5e8c6a]" />
+              <span className="font-geist-mono text-[10px] font-semibold tracking-[0.04em] text-[#16181d]">
+                BUILT IN 4.1s · EXTRACTED TO LOAD DRAFT ↓
+              </span>
+            </div>
+          </div>
+
+          <LoadDraftCard isMobile />
         </div>
       </div>
 

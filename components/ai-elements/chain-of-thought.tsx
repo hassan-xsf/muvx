@@ -229,6 +229,60 @@ export const ChainOfThoughtContent = memo(
   }
 );
 
+/**
+ * Per-step trigger row. Renders the step label and chevron; clicking it
+ * toggles the parent ChainOfThought collapsible. Mirrors the prompt-kit
+ * API so existing examples (`<ChainOfThoughtTrigger>...</ChainOfThoughtTrigger>`)
+ * drop in unchanged.
+ */
+export type ChainOfThoughtTriggerProps = ComponentProps<"button">;
+
+export const ChainOfThoughtTrigger = memo(
+  ({ className, children, ...props }: ChainOfThoughtTriggerProps) => {
+    const { isOpen, setIsOpen } = useChainOfThought();
+    return (
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={cn(
+          "flex w-full items-center gap-2 text-left text-sm transition-colors hover:text-foreground",
+          className,
+        )}
+        {...props}
+      >
+        <span className="flex-1">{children}</span>
+        <ChevronDownIcon
+          className={cn(
+            "size-4 shrink-0 transition-transform",
+            isOpen ? "rotate-180" : "rotate-0",
+          )}
+        />
+      </button>
+    );
+  },
+);
+
+/**
+ * Single bullet inside a ChainOfThoughtContent block. Renders a leading
+ * dot so the list reads as a sequence of facts the model considered.
+ */
+export type ChainOfThoughtItemProps = ComponentProps<"div">;
+
+export const ChainOfThoughtItem = memo(
+  ({ className, children, ...props }: ChainOfThoughtItemProps) => (
+    <div
+      className={cn(
+        "flex items-start gap-2 text-muted-foreground text-xs leading-relaxed",
+        className,
+      )}
+      {...props}
+    >
+      <DotIcon className="mt-1 size-3 shrink-0 text-muted-foreground/60" />
+      <span className="flex-1">{children}</span>
+    </div>
+  ),
+);
+
 export type ChainOfThoughtImageProps = ComponentProps<"div"> & {
   caption?: string;
 };
@@ -250,4 +304,6 @@ ChainOfThoughtStep.displayName = "ChainOfThoughtStep";
 ChainOfThoughtSearchResults.displayName = "ChainOfThoughtSearchResults";
 ChainOfThoughtSearchResult.displayName = "ChainOfThoughtSearchResult";
 ChainOfThoughtContent.displayName = "ChainOfThoughtContent";
+ChainOfThoughtTrigger.displayName = "ChainOfThoughtTrigger";
+ChainOfThoughtItem.displayName = "ChainOfThoughtItem";
 ChainOfThoughtImage.displayName = "ChainOfThoughtImage";

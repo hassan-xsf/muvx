@@ -13,32 +13,36 @@ const STATS = [
 
 export default function Stats() {
   return (
-    <section className="flex w-full flex-col gap-12 px-6 pt-[140px] md:px-16">
+    <section className="flex w-full flex-col gap-8 sm:gap-12 px-6 pt-16 sm:pt-24 lg:pt-[140px] md:px-16">
       <Eyebrow stop="STOP 04 — DELIVERED" subtitle="WHAT CHANGES ON DAY ONE" />
 
       {/* Headline */}
-      <div className="max-w-full font-serif text-[clamp(48px,5.5vw,76px)] leading-[0.96] tracking-[-1.52px]">
+      <div className="max-w-full font-serif text-[clamp(36px,5.5vw,76px)] leading-[0.98] sm:leading-[0.96] tracking-[-1px] sm:tracking-[-1.52px]">
         <p className="mb-0 text-[#16181d]">Less typing. Fewer calls.</p>
         <p className="italic text-[#d9622b]">More freight per person.</p>
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-2 border-t border-[#dcd5c9] lg:grid-cols-4">
+      <div className="grid grid-cols-1 border-t border-[#dcd5c9] sm:grid-cols-2 lg:grid-cols-4">
         {STATS.map((s, i) => (
           <div
             key={s.value}
-            className={`flex flex-col gap-3 pb-2 pt-8 pr-7 ${i > 0 ? "border-l border-[#dcd5c9] pl-7" : ""}`}
+            className={`flex flex-col gap-2.5 sm:gap-3 pb-6 pt-6 sm:pb-8 sm:pt-8 pr-4 sm:pr-7 border-b border-[#dcd5c9] last:border-b-0 lg:border-b-0 ${
+              i % 2 === 1 ? "sm:border-l sm:border-[#dcd5c9] sm:pl-7" : ""
+            } ${i >= 1 ? "lg:border-l lg:border-[#dcd5c9] lg:pl-7" : "lg:pl-0"} ${
+              i < 2 ? "sm:border-b sm:border-[#dcd5c9] lg:border-b-0" : "sm:border-b-0"
+            }`}
           >
-            <p className="font-serif text-[clamp(56px,6vw,88px)] leading-none tracking-[-2.64px] text-[#16181d]">
+            <p className="font-serif text-[clamp(48px,6vw,88px)] leading-none tracking-[-2px] sm:tracking-[-2.64px] text-[#16181d]">
               {s.value}
             </p>
-            <p className="font-geist text-[15px] leading-[22px] text-[#4a4e57]">{s.desc}</p>
+            <p className="font-geist text-sm sm:text-[15px] leading-[20px] sm:leading-[22px] text-[#4a4e57]">{s.desc}</p>
           </div>
         ))}
       </div>
 
       {/* Testimonial */}
-      <div className="flex gap-6 pt-24 sm:gap-16">
+      <div className="flex gap-4 sm:gap-16 pt-10 sm:pt-16 lg:pt-24">
         {/* Opening quote mark */}
         <span
           className="hidden shrink-0 font-serif text-[160px] leading-[120px] text-[#d9622b] sm:block"
