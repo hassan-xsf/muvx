@@ -114,11 +114,11 @@ export default function Autonomy() {
 
       <div className="flex flex-col gap-6 px-6 md:px-16 lg:flex-row">
         {/* ── Left: Autonomy dial ──────────────────────────────── */}
-        <div className="flex flex-col rounded-3xl border border-[#dcd5c9] bg-[#fffefb] px-8 py-7 shadow-[0_10px_30px_rgba(58,46,30,0.06)] lg:w-[800px] lg:shrink-0">
+        <div className="flex flex-col rounded-3xl border border-[#dcd5c9] bg-[#fffefb] px-5 py-6 sm:px-8 sm:py-7 shadow-[0_10px_30px_rgba(58,46,30,0.06)] lg:w-[800px] lg:shrink-0">
           {/* Header */}
-          <div className="flex flex-wrap items-center gap-4 pb-[18px]">
-            <p className="flex-1 font-serif text-[30px] text-[#16181d]">Autonomy, per workflow</p>
-            <div className="flex gap-4 font-geist-mono text-[9px] tracking-[0.04em]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 pb-[18px]">
+            <p className="font-serif text-[24px] sm:text-[30px] text-[#16181d]">Autonomy, per workflow</p>
+            <div className="flex flex-wrap gap-2.5 sm:gap-4 font-geist-mono text-[9px] tracking-[0.04em]">
               {(["WATCH", "SUGGEST", "ACT"] as const).map((l) => (
                 <span key={l} className="flex gap-1.5">
                   <span className="font-medium text-[#16181d]">{l}</span>
@@ -138,39 +138,41 @@ export default function Autonomy() {
           {WORKFLOWS.map((w) => (
             <div
               key={w.name}
-              className="flex flex-wrap items-center gap-4 border-t border-[#dcd5c9] py-4"
+              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 border-t border-[#dcd5c9] py-3.5 sm:py-4"
             >
               <div className="min-w-0 flex-1">
-                <p className="font-geist text-base font-medium text-[#16181d]">{w.name}</p>
-                <p className="font-geist text-[13px] text-[#8a8b8f]">{w.sub}</p>
+                <p className="font-geist text-sm sm:text-base font-medium text-[#16181d]">{w.name}</p>
+                <p className="font-geist text-xs sm:text-[13px] text-[#8a8b8f]">{w.sub}</p>
               </div>
-              <SegmentedToggle active={w.active} />
+              <div className="self-start sm:self-center">
+                <SegmentedToggle active={w.active} />
+              </div>
             </div>
           ))}
         </div>
 
         {/* ── Right: The Ledger ────────────────────────────────── */}
-        <div className="flex flex-1 flex-col gap-[18px] rounded-3xl border border-[#dcd5c9] bg-[#e7e0d3] p-7">
+        <div className="flex flex-1 flex-col gap-[18px] rounded-3xl border border-[#dcd5c9] bg-[#e7e0d3] p-5 sm:p-7">
           {/* Header */}
           <div>
             <p className="font-geist-mono text-[9px] font-medium tracking-[0.04em] text-[#8a8b8f]">
               THE LEDGER · TODAY 12:00 – 13:00
             </p>
-            <p className="mt-1.5 font-serif text-[30px] text-[#16181d]">While you were at lunch</p>
+            <p className="mt-1.5 font-serif text-[24px] sm:text-[30px] text-[#16181d]">While you were at lunch</p>
           </div>
 
           {/* Entries */}
           {LEDGER.map((e) => {
             const asked = e.badge === "ASKED";
             return (
-              <div key={e.time} className="flex gap-3.5">
+              <div key={e.time} className="flex gap-3 sm:gap-3.5">
                 <span
                   className={`shrink-0 font-geist-mono text-[10px] font-medium tracking-[0.04em] ${asked ? "text-[#d9622b]" : "text-[#8a8b8f]"}`}
                 >
                   {e.time}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="font-geist text-sm font-medium leading-[19px] text-[#16181d]">
+                  <p className="font-geist text-[13px] sm:text-sm font-medium leading-[19px] text-[#16181d]">
                     {e.title}
                   </p>
                   <p className="font-geist text-xs leading-[17px] text-[#8a8b8f]">{e.why}</p>

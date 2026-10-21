@@ -31,14 +31,14 @@ export default function Rules() {
       />
 
       <div className="px-6 md:px-16">
-        <div className="flex flex-col gap-8 rounded-[28px] bg-[#ede8df] px-6 py-10 sm:px-14 sm:py-12">
+        <div className="flex flex-col gap-6 sm:gap-8 rounded-[28px] bg-[#ede8df] px-4 py-7 sm:px-14 sm:py-12">
           {/* Rule input card */}
-          <div className="flex flex-col gap-3.5 rounded-[20px] border border-[#dcd5c9] bg-[#fffefb] px-6 py-7 shadow-[0_10px_30px_rgba(58,46,30,0.06)] sm:px-8">
-            <div className="flex items-center justify-between font-geist-mono text-[10px] tracking-[0.04em] text-[#8a8b8f]">
+          <div className="flex flex-col gap-3.5 rounded-[20px] border border-[#dcd5c9] bg-[#fffefb] px-4 py-5 shadow-[0_10px_30px_rgba(58,46,30,0.06)] sm:px-8 sm:py-7">
+            <div className="flex items-center justify-between font-geist-mono text-[9px] sm:text-[10px] tracking-[0.04em] text-[#8a8b8f]">
               <span className="font-medium">NEW RULE · WRITTEN BY PRIYA, DISPATCH LEAD</span>
               <span className="hidden sm:inline">⌘ ENTER TO PREVIEW</span>
             </div>
-            <p className="font-serif text-[clamp(28px,3.5vw,44px)] leading-[1.18] tracking-[-0.44px] text-[#16181d]">
+            <p className="font-serif text-[clamp(22px,3.5vw,44px)] leading-[1.2] sm:leading-[1.18] tracking-[-0.44px] text-[#16181d]">
               When a <span className={`text-[#2f4b7c] ${u}`}>priority customer</span>
               's delivery <span className={`text-[#d9622b] ${u}`}>is going to be late</span>,{" "}
               <span className={`text-[#5e8c6a] ${u}`}>
@@ -70,7 +70,7 @@ export default function Rules() {
                     {c.label}
                   </span>
                 </div>
-                <p className="font-geist text-[15px] font-medium leading-[21px] text-[#16181d]">
+                <p className="font-geist text-[14px] sm:text-[15px] font-medium leading-[21px] text-[#16181d]">
                   {c.text}
                 </p>
               </div>
@@ -78,19 +78,21 @@ export default function Rules() {
           </div>
 
           {/* Bottom row */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex flex-1 items-center gap-2.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
+            <div className="flex items-center gap-2.5">
               <span className="size-[7px] shrink-0 rounded-full bg-[#5e8c6a]" />
-              <span className="font-geist-mono text-[10px] font-medium tracking-[0.04em] text-[#4a4e57]">
+              <span className="font-geist-mono text-[9px] sm:text-[10px] font-medium tracking-[0.04em] text-[#4a4e57]">
                 BACK-TESTED ON YOUR LAST 30 DAYS: WOULD HAVE FIRED 23 TIMES · 21 LOOKED RIGHT
               </span>
             </div>
-            <button className="rounded-full border border-[rgba(22,24,29,0.25)] px-5 py-3 font-geist text-sm font-medium text-[#16181d] transition-colors hover:bg-[#dcd5c9]/40">
-              Edit wording
-            </button>
-            <button className="inline-flex items-center gap-2 rounded-full bg-[#16181d] px-5 py-3 font-geist text-sm font-medium text-[#f5f2ec] transition-colors hover:bg-[#2a2d35]">
-              Turn it on <span aria-hidden="true">→</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-3">
+              <button className="flex-1 sm:flex-initial rounded-full border border-[rgba(22,24,29,0.25)] px-4 sm:px-5 py-2.5 sm:py-3 font-geist text-xs sm:text-sm font-medium text-[#16181d] transition-colors hover:bg-[#dcd5c9]/40">
+                Edit wording
+              </button>
+              <button className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 rounded-full bg-[#16181d] px-4 sm:px-5 py-2.5 sm:py-3 font-geist text-xs sm:text-sm font-medium text-[#f5f2ec] transition-colors hover:bg-[#2a2d35]">
+                Turn it on <span aria-hidden="true">→</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

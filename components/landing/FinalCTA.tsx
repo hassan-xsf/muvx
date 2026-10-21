@@ -17,8 +17,8 @@ export default function FinalCTA() {
   const router = useRouter()
 
   return (
-    <section className="w-full px-6 pt-[140px] md:px-16">
-      <div className="relative overflow-hidden rounded-[32px] bg-[#ede8df] px-8 py-16 sm:px-16 sm:py-20 md:min-h-[520px]">
+    <section className="w-full px-6 pt-16 sm:pt-24 lg:pt-[140px] md:px-16">
+      <div className="relative overflow-hidden rounded-[32px] bg-[#ede8df] px-6 py-12 sm:px-16 sm:py-20 md:min-h-[520px]">
         {/* ── Background wavy lines ─────────────────────────── */}
         <svg
           className="pointer-events-none absolute inset-0 h-full w-full"
@@ -61,7 +61,7 @@ export default function FinalCTA() {
         </p>
 
         {/* ── Content ───────────────────────────────────────── */}
-        <div className="relative z-10 flex flex-col gap-8">
+        <div className="relative z-10 flex flex-col gap-6 sm:gap-8">
           {/* Eyebrow */}
           <div className="flex items-center gap-2.5">
             <span className="size-[7px] shrink-0 rounded-full bg-[#d9622b]" />
@@ -74,7 +74,7 @@ export default function FinalCTA() {
           </div>
 
           {/* Headline */}
-          <div className="max-w-[900px] font-serif text-[clamp(48px,6vw,88px)] leading-[0.96] tracking-[-1.76px]">
+          <div className="max-w-[900px] font-serif text-[clamp(36px,6vw,88px)] leading-[0.98] sm:leading-[0.96] tracking-[-1px] sm:tracking-[-1.76px]">
             <p className="mb-0 text-[#16181d]">Your next load is</p>
             <p className="italic text-[#d9622b]">already in your inbox.</p>
           </div>
