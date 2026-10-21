@@ -169,6 +169,7 @@ export default function Hero() {
               {user ? (
                 <OrbitBorderButton
                   onClick={() => router.push("/dashboard")}
+                  cometColor="#ffffff"
                 >
                   Dashboard&nbsp;&nbsp;→
                 </OrbitBorderButton>

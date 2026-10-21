@@ -15,8 +15,8 @@ export interface OrbitBorderButtonProps
 
 export function OrbitBorderButton({
   children,
-  cometColor = "#d9622b",
-  borderColor = "rgba(22, 24, 29, 0.22)",
+  cometColor = "#ffffff",
+  borderColor = "rgba(255, 255, 255, 0.15)",
   fill = "#16181d",
   speed = 3.5,
   className,
@@ -36,7 +36,7 @@ export function OrbitBorderButton({
         props.onMouseLeave?.(e);
       }}
       className={cn(
-        "group relative inline-flex items-center justify-center rounded-full p-[1.5px] font-geist text-base font-medium text-[#f5f2ec] transition-all duration-300 hover:scale-[1.03] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d9622b]/50 overflow-hidden",
+        "group relative inline-flex items-center justify-center rounded-full p-[1.5px] font-geist text-base font-medium text-[#f5f2ec] transition-all duration-300 hover:scale-[1.03] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 overflow-hidden",
         className
       )}
       style={{
