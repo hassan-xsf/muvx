@@ -84,11 +84,11 @@ function SegmentedToggle({ active }: { active: Level }) {
         return (
           <div
             key={lvl}
-            className={`flex items-center gap-1.5 rounded-full px-3.5 py-[7px] ${on ? "bg-[#16181d]" : ""}`}
+            className={`flex items-center gap-1.5 rounded-full px-2.5 sm:px-3.5 py-1 sm:py-[7px] ${on ? "bg-[#16181d]" : ""}`}
           >
             {showDot && <span className="size-[5px] rounded-full bg-[#f5f2ec]" />}
             <span
-              className={`font-geist text-[13px] font-medium whitespace-nowrap ${on ? "text-[#f5f2ec]" : "text-[#4a4e57]"}`}
+              className={`font-geist text-xs sm:text-[13px] font-medium whitespace-nowrap ${on ? "text-[#f5f2ec]" : "text-[#4a4e57]"}`}
             >
               {LEVEL_LABEL[lvl]}
             </span>
@@ -112,9 +112,9 @@ export default function Autonomy() {
         description="Choose, workflow by workflow, how much Nova does on its own. Start cautious, hand over more as it earns your trust. Every action is logged with the reason behind it."
       />
 
-      <div className="flex flex-col gap-6 px-6 md:px-16 lg:flex-row">
+      <div className="flex flex-col gap-6 px-6 md:px-16 xl:flex-row">
         {/* ── Left: Autonomy dial ──────────────────────────────── */}
-        <div className="flex flex-col rounded-3xl border border-[#dcd5c9] bg-[#fffefb] px-5 py-6 sm:px-8 sm:py-7 shadow-[0_10px_30px_rgba(58,46,30,0.06)] lg:w-[800px] lg:shrink-0">
+        <div className="flex flex-col rounded-3xl border border-[#dcd5c9] bg-[#fffefb] px-5 py-6 sm:px-8 sm:py-7 shadow-[0_10px_30px_rgba(58,46,30,0.06)] xl:w-[740px] 2xl:w-[800px] xl:shrink-0">
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 pb-[18px]">
             <p className="font-serif text-[24px] sm:text-[30px] text-[#16181d]">Autonomy, per workflow</p>

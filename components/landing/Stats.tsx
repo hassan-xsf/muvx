@@ -23,15 +23,15 @@ export default function Stats() {
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-1 gap-y-6 sm:grid-cols-2 border-t border-[#dcd5c9] lg:grid-cols-4 sm:gap-y-0">
+      <div className="grid grid-cols-1 border-t border-[#dcd5c9] sm:grid-cols-2 lg:grid-cols-4">
         {STATS.map((s, i) => (
           <div
             key={s.value}
-            className={`flex flex-col gap-2.5 sm:gap-3 pb-2 pt-6 sm:pt-8 ${
+            className={`flex flex-col gap-2.5 sm:gap-3 pb-6 pt-6 sm:pb-8 sm:pt-8 pr-4 sm:pr-7 border-b border-[#dcd5c9] last:border-b-0 lg:border-b-0 ${
               i % 2 === 1 ? "sm:border-l sm:border-[#dcd5c9] sm:pl-7" : ""
-            } ${i >= 2 ? "lg:border-l lg:border-[#dcd5c9] lg:pl-7" : ""} ${
-              i === 1 ? "lg:border-l lg:border-[#dcd5c9] lg:pl-7" : ""
-            } ${i > 0 && i < 2 ? "sm:border-b-0" : ""} pr-4 sm:pr-7 border-b border-[#dcd5c9] sm:border-b-0`}
+            } ${i >= 1 ? "lg:border-l lg:border-[#dcd5c9] lg:pl-7" : "lg:pl-0"} ${
+              i < 2 ? "sm:border-b sm:border-[#dcd5c9] lg:border-b-0" : "sm:border-b-0"
+            }`}
           >
             <p className="font-serif text-[clamp(48px,6vw,88px)] leading-none tracking-[-2px] sm:tracking-[-2.64px] text-[#16181d]">
               {s.value}

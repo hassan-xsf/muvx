@@ -80,11 +80,11 @@ export default function FinalCTA() {
           </div>
 
           {/* CTA buttons */}
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             {user ? (
               <button
                 onClick={() => router.push("/dashboard")}
-                className="inline-flex items-center gap-2.5 rounded-full bg-[#16181d] px-6 py-4 font-geist text-base font-medium text-[#f5f2ec] transition-colors hover:bg-[#2a2d35]"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 rounded-full bg-[#16181d] px-6 py-3.5 sm:py-4 font-geist text-base font-medium text-[#f5f2ec] transition-colors hover:bg-[#2a2d35]"
               >
                 Go to Dashboard <span aria-hidden="true">→</span>
               </button>
@@ -92,13 +92,13 @@ export default function FinalCTA() {
               <>
                 <Link
                   href="/signup"
-                  className="inline-flex items-center gap-2.5 rounded-full bg-[#16181d] px-6 py-4 font-geist text-base font-medium text-[#f5f2ec] transition-colors hover:bg-[#2a2d35]"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 rounded-full bg-[#16181d] px-6 py-3.5 sm:py-4 font-geist text-base font-medium text-[#f5f2ec] transition-colors hover:bg-[#2a2d35]"
                 >
                   Get early access <span aria-hidden="true">→</span>
                 </Link>
                 <Link
                   href="/contact"
-                  className="rounded-full border border-[rgba(22,24,29,0.25)] px-[22px] py-4 font-geist text-base font-medium text-[#16181d] transition-colors hover:bg-[#dcd5c9]/40"
+                  className="w-full sm:w-auto inline-flex items-center justify-center rounded-full border border-[rgba(22,24,29,0.25)] px-[22px] py-3.5 sm:py-4 font-geist text-base font-medium text-[#16181d] transition-colors hover:bg-[#dcd5c9]/40 text-center"
                 >
                   Book a 20-min walkthrough
                 </Link>
