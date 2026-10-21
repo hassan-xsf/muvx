@@ -21,7 +21,7 @@ interface RateConUploaderProps {
   defaultOpen?: boolean
 }
 
-export function RateConUploader({ onParsed, defaultOpen = true }: RateConUploaderProps) {
+export function RateConUploader({ onParsed, defaultOpen = false }: RateConUploaderProps) {
   const [isOpen, setIsOpen] = React.useState(defaultOpen)
   const [isDragging, setIsDragging] = React.useState(false)
   const [isUploading, setIsUploading] = React.useState(false)
@@ -88,19 +88,19 @@ export function RateConUploader({ onParsed, defaultOpen = true }: RateConUploade
   return (
     <div className="w-full mb-6">
       {!isOpen ? (
-        <div className="flex items-center justify-between p-3.5 sm:p-4 rounded-xl border border-brand-accent/20 bg-brand-accent-tint/40 backdrop-blur-sm">
-          <div className="flex items-center gap-3">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-brand-accent text-brand-cream shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3.5 sm:p-4 rounded-xl border border-brand-accent/20 bg-brand-accent-tint/40 backdrop-blur-sm">
+          <div className="flex items-start sm:items-center gap-3 min-w-0">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand-accent text-brand-cream shadow-sm">
               <Sparkles className="size-4 animate-pulse" />
             </div>
-            <div>
-              <p className="text-xs sm:text-sm font-semibold text-brand-ink flex items-center gap-1.5">
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm font-semibold text-brand-ink flex flex-wrap items-center gap-1.5">
                 Have a Rate Confirmation PDF?
                 <span className="inline-flex rounded-full bg-brand-accent/15 px-2 py-0.5 text-[10px] font-medium text-brand-accent">
-                  Gemini 2.5 Flash
+                  Gemini 3.8 Flash
                 </span>
               </p>
-              <p className="text-[11px] sm:text-xs text-brand-muted-soft">
+              <p className="text-[11px] sm:text-xs text-brand-muted-soft mt-0.5 leading-relaxed">
                 Upload broker rate-con to auto-populate customer, linehaul rate, commodity, and multi-stop docks.
               </p>
             </div>
@@ -113,7 +113,7 @@ export function RateConUploader({ onParsed, defaultOpen = true }: RateConUploade
               sounds.playTrackpadClick()
               setIsOpen(true)
             }}
-            className="shrink-0 border-brand-accent/30 text-brand-accent hover:bg-brand-accent hover:text-white transition-all text-xs font-medium rounded-lg h-8"
+            className="w-full sm:w-auto shrink-0 border-brand-accent/30 text-brand-accent hover:bg-brand-accent hover:text-white transition-all text-xs font-medium rounded-lg h-8 cursor-pointer"
           >
             Auto-fill with AI
           </Button>
@@ -123,12 +123,12 @@ export function RateConUploader({ onParsed, defaultOpen = true }: RateConUploade
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -8 }}
-          className="rounded-xl border border-brand-accent/30 bg-brand-card p-4 shadow-sm"
+          className="rounded-xl border border-brand-accent/30 bg-brand-card p-3.5 sm:p-4 shadow-sm"
         >
           <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="size-4 text-brand-accent" />
-              <span className="text-xs font-semibold text-brand-ink uppercase tracking-wider font-mono">
+            <div className="flex items-center gap-2 min-w-0">
+              <Sparkles className="size-4 text-brand-accent shrink-0" />
+              <span className="text-xs font-semibold text-brand-ink uppercase tracking-wider font-mono truncate">
                 Document AI Rate-Con Extraction
               </span>
             </div>
@@ -149,7 +149,7 @@ export function RateConUploader({ onParsed, defaultOpen = true }: RateConUploade
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
             onClick={() => !isUploading && fileInputRef.current?.click()}
-            className={`cursor-pointer border-2 border-dashed rounded-lg p-6 text-center transition-all ${
+            className={`cursor-pointer border-2 border-dashed rounded-lg p-4 sm:p-6 text-center transition-all ${
               isDragging
                 ? "border-brand-accent bg-brand-accent-tint/50"
                 : "border-brand-rule hover:border-brand-accent/50 bg-brand-cream/10"
@@ -170,7 +170,7 @@ export function RateConUploader({ onParsed, defaultOpen = true }: RateConUploade
               <div className="flex flex-col items-center justify-center py-3 space-y-2">
                 <Loader2 className="size-8 text-brand-accent animate-spin" />
                 <p className="text-xs font-medium text-brand-ink">
-                  Reading document with Gemini 2.5 Flash...
+                  Reading document with Gemini 3.8 Flash...
                 </p>
                 <p className="text-[11px] text-brand-muted-soft">
                   Extracting tender #{fileName ? ` · ${fileName}` : ""}, pricing, and dock appointments

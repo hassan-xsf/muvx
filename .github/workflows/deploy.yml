@@ -44,7 +44,10 @@ jobs:
             bun run build
             
             echo "🔄 Restarting application with PM2..."
-            pm2 restart muvx || pm2 start "bun next start -p 3000" --name muvx
+            chmod +x start.sh
+            cp -r .next/static .next/standalone/.next/
+            cp -r public .next/standalone/
+            pm2 restart muvx || pm2 start /home/ubuntu/muvx/start.sh --name muvx
             pm2 save
             
             echo "✅ Deployment complete! Muvx is live."

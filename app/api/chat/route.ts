@@ -448,7 +448,16 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    return createUIMessageStreamResponse({ stream })
+    return createUIMessageStreamResponse({
+      stream,
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+        "Content-Encoding": "none",
+      },
+    })
   } catch (error: any) {
     // Structured failure, correlated by turnId where we got far enough to
     // create the logger.

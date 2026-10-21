@@ -163,10 +163,12 @@ const nid = (prefix: string) => `${prefix}-${++_idCounter}`;
 
 export function fromUIMessage(message: UIMessage, isStreaming: boolean): StreamingMessage {
   const parts: StreamPart[] = [];
+  let idx = 0;
   for (const part of message.parts) {
+    idx++;
     if (isTextUIPart(part)) {
       parts.push({
-        id: nid("text"),
+        id: `${message.id}-text-${idx}`,
         type: part.text ? "text-delta" : "text-end",
         text: part.text ?? "",
       });
@@ -174,7 +176,7 @@ export function fromUIMessage(message: UIMessage, isStreaming: boolean): Streami
     }
     if (isReasoningUIPart(part)) {
       parts.push({
-        id: nid("reasoning"),
+        id: `${message.id}-reasoning-${idx}`,
         type: part.state === "streaming" ? "reasoning-delta" : "reasoning-end",
         text: part.text,
       });

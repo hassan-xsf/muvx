@@ -235,9 +235,7 @@ export const auth = betterAuth({
     emailOTP({
       otpLength: 6,
       expiresIn: 600,
-      // Sign-up is owned by /signup — keep emailOTP strictly for sign-in
-      // so we don't leak account existence via email-enumeration.
-      disableSignUp: true,
+      disableSignUp: false,
       async sendVerificationOTP({ email, otp, type }) {
         console.log("[AUTH] === emailOTP.sendVerificationOTP called ===")
         console.log("[AUTH] emailOTP type:", type)

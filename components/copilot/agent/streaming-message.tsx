@@ -701,22 +701,18 @@ export function StreamingAssistantMessage({
   onRespondToApproval?: ApprovalResponder
 }) {
   const isStreamingThis = isLoading && !message.isComplete
-  const partsLen = message.orderedParts.length
-  const segments = useMemo(
-    () => buildSegments(message.orderedParts),
-    [partsLen, isStreamingThis],
-  )
-  const renderGroups = useMemo(() => groupThinkingRuns(segments), [segments])
+  // During live streaming, recompute segments so every arriving token immediately updates the UI.
+  // When idle, memoize by orderedParts reference for optimal performance.
+  const segments = buildSegments(message.orderedParts)
+  const renderGroups = groupThinkingRuns(segments)
 
-  const allText = useMemo(() => {
-    return segments
-      .filter(
-        (s): s is { kind: "text"; events: TextDeltaEvent[] } => s.kind === "text",
-      )
-      .flatMap((s) => s.events)
-      .map((e) => e.text)
-      .join("")
-  }, [segments])
+  const allText = segments
+    .filter(
+      (s): s is { kind: "text"; events: TextDeltaEvent[] } => s.kind === "text",
+    )
+    .flatMap((s) => s.events)
+    .map((e) => e.text)
+    .join("")
 
   const showWorking = isStreamingThis && segments.length === 0
   const activeToolEvent = useMemo(
