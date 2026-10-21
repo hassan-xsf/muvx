@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "./landing-utils"
 import { Instrument_Serif } from "next/font/google"
+import { OrbitBorderButton } from "@/components/originkit/orbit-border-button"
 
 const instrumentSerif = Instrument_Serif({
   weight: "400",
@@ -151,8 +152,8 @@ export default function Hero() {
           {/* ──────────────────────────────────────────────────────────────
            * Left content
            * ────────────────────────────────────────────────────────────── */}
-          <div className={` ${instrumentSerif.className} relative z-20 max-w-[760px] pt-1 lg:pt-[20px]`}>
-            <h1 className="max-w-[760px] font-serif font-normal text-[clamp(56px,7.2vw,104px)] leading-[0.92] tracking-[-0.045em] text-[#16181d]">
+          <div className="relative z-20 max-w-[760px] pt-1 lg:pt-[20px]">
+            <h1 className={`${instrumentSerif.className} max-w-[760px] font-normal text-[clamp(56px,7.2vw,104px)] leading-[0.92] tracking-[-0.045em] text-[#16181d]`}>
               <span className="block ">The TMS built for</span>
 
               <span className="block italic font-serif text-[#d9622b]">the way your fleet moves.</span>
@@ -166,12 +167,11 @@ export default function Hero() {
             {/* CTA */}
             <div className="mt-8 flex flex-wrap items-center gap-3">
               {user ? (
-                <button
+                <OrbitBorderButton
                   onClick={() => router.push("/dashboard")}
-                  className="inline-flex items-center justify-center rounded-full bg-[#16181d] px-7 py-4 font-geist text-base font-medium text-[#f5f2ec] transition-colors hover:bg-[#2a2d35]"
                 >
                   Dashboard&nbsp;&nbsp;→
-                </button>
+                </OrbitBorderButton>
               ) : (
                 <>
                   <Link
