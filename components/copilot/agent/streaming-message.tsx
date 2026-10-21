@@ -453,7 +453,11 @@ function buildSegments(parts: StreamPart[]): RenderSegment[] {
       if (last?.kind === "reasoning") {
         last.events.push(part as ReasoningPartEvent)
       } else {
-        segs.push({ kind: "reasoning", events: [part as ReasoningPartEvent] })
+        segs.push({
+          id: part.id || `reasoning-${segs.length}`,
+          kind: "reasoning",
+          events: [part as ReasoningPartEvent],
+        })
       }
       continue
     }
@@ -477,7 +481,11 @@ function buildSegments(parts: StreamPart[]): RenderSegment[] {
       if (last?.kind === "tools") {
         last.tools.push(t)
       } else {
-        segs.push({ kind: "tools", tools: [t] })
+        segs.push({
+          id: t.toolCallId || t.id || `tools-${segs.length}`,
+          kind: "tools",
+          tools: [t],
+        })
       }
       continue
     }
@@ -485,7 +493,11 @@ function buildSegments(parts: StreamPart[]): RenderSegment[] {
       if (last?.kind === "text") {
         last.events.push(part as TextDeltaEvent)
       } else {
-        segs.push({ kind: "text", events: [part as TextDeltaEvent] })
+        segs.push({
+          id: part.id || `text-${segs.length}`,
+          kind: "text",
+          events: [part as TextDeltaEvent],
+        })
       }
       continue
     }
@@ -493,20 +505,36 @@ function buildSegments(parts: StreamPart[]): RenderSegment[] {
       if (last?.kind === "sources") {
         last.urls.push(part as SourceUrlEvent)
       } else {
-        segs.push({ kind: "sources", urls: [part as SourceUrlEvent] })
+        segs.push({
+          id: part.id || `sources-${segs.length}`,
+          kind: "sources",
+          urls: [part as SourceUrlEvent],
+        })
       }
       continue
     }
     if (part.type === "progress") {
-      segs.push({ kind: "progress", ev: part as ProgressEvent })
+      segs.push({
+        id: part.id || `progress-${segs.length}`,
+        kind: "progress",
+        ev: part as ProgressEvent,
+      })
       continue
     }
     if (part.type === "warning") {
-      segs.push({ kind: "warning", ev: part as WarningEvent })
+      segs.push({
+        id: part.id || `warning-${segs.length}`,
+        kind: "warning",
+        ev: part as WarningEvent,
+      })
       continue
     }
     if (part.type === "stream-error") {
-      segs.push({ kind: "stream-error", ev: part as StreamErrorEvent })
+      segs.push({
+        id: part.id || `stream-error-${segs.length}`,
+        kind: "stream-error",
+        ev: part as StreamErrorEvent,
+      })
       continue
     }
   }
@@ -626,7 +654,7 @@ export function StreamingAssistantMessage({
 
   const allText = segments
     .filter(
-      (s): s is { kind: "text"; events: TextDeltaEvent[] } => s.kind === "text",
+      (s): s is Extract<RenderSegment, { kind: "text" }> => s.kind === "text",
     )
     .flatMap((s) => s.events)
     .map((e) => e.text)
@@ -651,6 +679,7 @@ export function StreamingAssistantMessage({
       <div className="space-y-2">
         {renderGroups.map((seg, i) => {
           const isLastSeg = isStreamingThis && i === renderGroups.length - 1
+          const segKey = seg.id || `seg-${i}`
 
           if (seg.kind === "thinking-run") {
             const hasActiveTool = seg.segments
@@ -658,7 +687,7 @@ export function StreamingAssistantMessage({
               .some((t) => isActiveToolState(t.state))
             return (
               <ThinkingRun
-                key={i}
+                key={segKey}
                 segments={seg.segments}
                 active={isLastSeg || hasActiveTool}
                 onRespond={onRespondToApproval}
@@ -668,36 +697,36 @@ export function StreamingAssistantMessage({
           if (seg.kind === "reasoning") {
             return (
               <ReasoningBlock
-                key={i}
+                key={segKey}
                 reasoningEvents={seg.events}
                 isStreaming={isLastSeg}
               />
             )
           }
           if (seg.kind === "tools") {
-            return <ToolPartList key={i} tools={seg.tools} onRespond={onRespondToApproval} />
+            return <ToolPartList key={segKey} tools={seg.tools} onRespond={onRespondToApproval} />
           }
           if (seg.kind === "text") {
             const text = seg.events.map((e) => e.text).join("")
             return text ? (
-              <StreamingText key={i} text={text} isStreaming={isLastSeg} />
+              <StreamingText key={segKey} text={text} isStreaming={isLastSeg} />
             ) : null
           }
           if (seg.kind === "sources") {
-            return <SourceUrlPills key={i} urls={seg.urls} />
+            return <SourceUrlPills key={segKey} urls={seg.urls} />
           }
           if (seg.kind === "progress") {
             return (
-              <div key={i} className="text-[11.5px] text-brand-muted-soft/75">
+              <div key={segKey} className="text-[11.5px] text-brand-muted-soft/75">
                 {seg.ev.label}
               </div>
             )
           }
           if (seg.kind === "warning") {
-            return <WarningBanner key={i} ev={seg.ev} />
+            return <WarningBanner key={segKey} ev={seg.ev} />
           }
           if (seg.kind === "stream-error") {
-            return <StreamErrorCard key={i} ev={seg.ev} />
+            return <StreamErrorCard key={segKey} ev={seg.ev} />
           }
           return null
         })}
