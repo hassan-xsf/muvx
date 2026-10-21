@@ -132,7 +132,6 @@ import {
   traceWarn,
   describePart,
 } from "@/lib/copilot/client-trace";
-import { Shimmer } from "@/components/ai-elements/shimmer";
 import {
   StreamingAssistantMessage,
   fromUIMessage,
@@ -1623,7 +1622,9 @@ function renderPart(
                     size="xs"
                     mood="think"
                   />
-                  <Shimmer duration={2}>Sub-agent analyzing operational parameters…</Shimmer>
+                  <span className="text-xs text-brand-muted">
+                    Processing operational parameters…
+                  </span>
                 </div>
               </TaskItem>
             )}
@@ -2374,28 +2375,12 @@ export default function ChatInterface() {
           <ConversationScrollButton />
       </Conversation>
 
-      {/* Upload feedback — the browser pushes bytes straight to S3, so surface
-          progress and any storage rejection above the input bar. */}
-      {uploadState !== "idle" && (
+      {/* Upload error display if storage fails */}
+      {uploadState === "error" && uploadError && (
         <div className="max-w-4xl mx-auto w-full px-4 pb-1.5">
-          <div
-            className={cn(
-              "flex items-center gap-2 text-xs",
-              uploadState === "error"
-                ? "text-destructive"
-                : "text-brand-muted-soft"
-            )}
-          >
-            {uploadState === "uploading" ? (
-              <>
-                <Shimmer duration={1.4}>Uploading to secure storage…</Shimmer>
-              </>
-            ) : (
-              <>
-                <FileWarning className="size-3.5 shrink-0" />
-                <span>{uploadError ?? "Upload failed"}</span>
-              </>
-            )}
+          <div className="flex items-center gap-2 text-xs text-destructive">
+            <FileWarning className="size-3.5 shrink-0" />
+            <span>{uploadError}</span>
           </div>
         </div>
       )}
