@@ -163,7 +163,8 @@ import {
   ExternalLink,
   UserPlus,
   Building2,
-CircleDollarSign,
+  CircleDollarSign,
+  DollarSign,
   Brain,
   Package,
   PackagePlus,
@@ -2251,6 +2252,29 @@ export default function ChatInterface() {
       });
   }, []);
 
+  const readFileAsDataUrl = (file: File): Promise<FileUIPart> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        resolve({
+          type: "file",
+          mediaType: file.type || "application/octet-stream",
+          filename: file.name,
+          url: reader.result as string,
+        });
+      };
+      reader.onerror = () => {
+        resolve({
+          type: "file",
+          mediaType: file.type || "application/octet-stream",
+          filename: file.name,
+          url: "",
+        });
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
   const sendWithProvider = async (
     text: string,
     options: { webSearch: boolean; model: string | null; files?: File[] }
@@ -2278,25 +2302,10 @@ export default function ChatInterface() {
 
     let fileParts: FileUIPart[] | undefined;
     if (options.files && options.files.length > 0) {
-      setUploadState("uploading");
-      try {
-        // Browser → S3 direct. The server only signs.
-        fileParts = await uploadFilesToS3(options.files);
-        traceInfo("upload:ok", {
-          count: fileParts.length,
-          files: fileParts.map((f) => f.filename),
-        });
-      } catch (err) {
-        traceError("upload:failed", {
-          message: err instanceof Error ? err.message : String(err),
-        });
-        setUploadError(err instanceof Error ? err.message : "Upload failed");
-        setUploadState("error");
-        endSend();
-        return;
-      } finally {
-        setUploadState("idle");
-      }
+      // Instantly convert local files to data URIs in <3ms so UI transition is instant
+      fileParts = await Promise.all(options.files.map(readFileAsDataUrl));
+      // Non-blocking background upload to S3 for persistent storage
+      uploadFilesToS3(options.files).catch(() => {});
     }
 
     if (fileParts && fileParts.length > 0) {
@@ -2348,12 +2357,12 @@ export default function ChatInterface() {
             />
           </div>
 
-          {/* Hero headline — Gemini style: Where should we start? */}
+          {/* Hero headline matching user screenshot */}
           <h1 className="font-serif text-[clamp(28px,4vw,38px)] leading-[1.15] tracking-tight text-brand-ink text-center">
-            Where should we start?
+            What should <span className="italic text-brand-accent">Muvx</span> handle next?
           </h1>
 
-          {/* Hero input — pure custom Gemini-style capsule */}
+          {/* Hero input — clean card */}
           <div className="mt-7 w-full">
             <AI_Input_Search
               models={availableModels}
@@ -2362,27 +2371,32 @@ export default function ChatInterface() {
               onSubmit={sendWithProvider}
               isLoading={status === "submitted" || status === "streaming"}
               onStop={stop}
-              placeholder="Ask Muvx anything…"
+              placeholder="Ask Muvx anything — loads, rates, drivers, invoices, or attach a document..."
             />
           </div>
 
-          {/* Gemini-style whisper starter prompts below input */}
-          <div className="mt-7 flex w-full max-w-xl flex-col gap-2">
+          {/* Starter prompts matching user screenshot */}
+          <div className="mt-6 flex w-full max-w-2xl flex-col items-start gap-2.5 px-4 sm:px-1">
             {[
               {
                 icon: Truck,
-                text: "Show active loads and current transit status",
+                text: "Show today's active loads",
                 prompt: "Show me all loads active today with their current status.",
               },
               {
                 icon: FileText,
-                text: "Audit delivered loads missing signed POD documents",
+                text: "Audit missing PODs",
                 prompt: "Find delivered loads from the last 7 days that are still missing a signed POD.",
               },
               {
                 icon: Users,
-                text: "Check tractor and driver availability for dispatch",
+                text: "Fleet availability",
                 prompt: "Which tractors and drivers are available for dispatch right now?",
+              },
+              {
+                icon: DollarSign,
+                text: "Overdue AR",
+                prompt: "Show me all overdue customer invoices and open AR aging.",
               },
             ].map((hint, idx) => (
               <button
@@ -2394,10 +2408,10 @@ export default function ChatInterface() {
                     model: selectedModel,
                   })
                 }
-                className="group flex items-center gap-3 rounded-2xl border border-brand-rule/60 bg-brand-card/70 px-4 py-2.5 text-left transition-all hover:border-brand-accent/40 hover:bg-brand-card"
+                className="group flex items-center gap-2.5 text-left text-xs text-brand-muted hover:text-brand-ink transition-colors cursor-pointer py-0.5"
               >
-                <hint.icon className="size-4 shrink-0 text-brand-muted-soft transition-colors group-hover:text-brand-accent" />
-                <span className="text-[13px] font-medium text-brand-ink/80 transition-colors group-hover:text-brand-ink">
+                <hint.icon className="size-3.5 shrink-0 text-brand-muted-soft group-hover:text-brand-ink transition-colors" />
+                <span className="font-normal transition-colors">
                   {hint.text}
                 </span>
               </button>
@@ -2430,30 +2444,10 @@ export default function ChatInterface() {
           auto-scroll. `min-h-0` keeps it shrinkable inside the flex column. */}
       <Conversation className="flex-1 min-h-0">
           <ConversationContent className="max-w-4xl mx-auto w-full px-4 py-4 gap-4">
-            {messages
-              .filter(
-                (m) =>
-                  m.role === "user" ||
-                  (m.role === "assistant" &&
-                    m.parts.some(
-                      (p) =>
-                        (isTextUIPart(p) && p.text.trim().length > 0) ||
-                        isToolUIPart(p) ||
-                        (isDataUIPart(p) && p.type === "data-cot-step")
-                    ))
-              )
-              .map((message, mIdx) => {
+            {messages.map((message, mIdx) => {
               const isLastMessage = mIdx === messages.length - 1;
               const isAssistant = message.role === "assistant";
               const rowMood: BotMood = isLastMessage ? copilotMood : "idle";
-              const isStreamingNow =
-                isLastMessage && (status === "submitted" || status === "streaming");
-              // Translate the AI-SDK UIMessage into the agentic renderer
-              // schema. Identity translate only — duration is reconstructed
-              // from `parts.length` for memoisation.
-              const streamingMsg = isAssistant
-                ? fromUIMessage(message, isStreamingNow)
-                : null;
               return (
                 <Message key={message.id} from={message.role} className="gap-1.5">
                   {isAssistant && (
@@ -2462,27 +2456,19 @@ export default function ChatInterface() {
                     </div>
                   )}
                   <MessageContent>
-                    {isAssistant && streamingMsg ? (
-                      <StreamingAssistantMessage
-                        message={streamingMsg}
-                        isLoading={isStreamingNow}
-                        onRespondToApproval={respondToApproval}
-                      />
-                    ) : (
-                      renderMessageParts(
-                        message,
-                        respondToApproval,
-                        (text) =>
-                          sendWithProvider(text, {
-                            webSearch: false,
-                            model: selectedModel,
-                          }),
-                        botCoat,
-                        isLastMessage && status === "streaming"
-                      )
+                    {renderMessageParts(
+                      message,
+                      respondToApproval,
+                      (text) =>
+                        sendWithProvider(text, {
+                          webSearch: false,
+                          model: selectedModel,
+                        }),
+                      botCoat,
+                      isLastMessage && status === "streaming"
                     )}
                   </MessageContent>
-                  {isAssistant && message.parts.some((p) => isTextUIPart(p) && p.text.trim().length > 0) && (
+                  {isAssistant && (
                     <MessageToolbar>
                       <MessageActions>
                         <CopyButton message={message} />
@@ -2493,46 +2479,39 @@ export default function ChatInterface() {
               );
             })}
 
-            {/* Instant "alive" feedback before first chunk arrives */}
-            {(status === "submitted" || status === "streaming") &&
-              !messages.some(
-                (m) =>
-                  m.role === "assistant" &&
-                  m.parts.some(
-                    (p) =>
-                      (isTextUIPart(p) && p.text.trim().length > 0) ||
-                      isToolUIPart(p) ||
-                      (isDataUIPart(p) && p.type === "data-cot-step")
-                  )
-              ) && (
-                <Message from="assistant" className="gap-1.5">
-                  <div className="flex items-center gap-2 mb-0.5 select-none">
-                    <MuvxBot
-                      size="xs"
-                      coat={botCoat}
-                      mood={copilotMood}
-                      showDots
-                      isActive
-                    />
-                  </div>
-                  <MessageContent>
-                    <div className="flex items-center gap-2.5 py-1.5 px-1">
-                      <div className="flex gap-1.5 items-center">
-                        <span className="size-2 rounded-full bg-brand-accent/70 animate-pulse [animation-delay:0ms]" />
-                        <span className="size-2 rounded-full bg-brand-accent/70 animate-pulse [animation-delay:150ms]" />
-                        <span className="size-2 rounded-full bg-brand-accent/70 animate-pulse [animation-delay:300ms]" />
-                      </div>
-                      <Shimmer duration={1.6} className="text-[13px] font-medium text-brand-accent">
-                        {status === "submitted"
-                          ? "Connecting to Muvx Brain…"
-                          : isAnyToolRunning
-                            ? "Searching live operational data…"
-                            : "Thinking through freight records…"}
-                      </Shimmer>
+            {/* Turn indicator — displayed while waiting for assistant output without loud orange text */}
+            {(status === "submitted" ||
+              (status === "streaming" &&
+                !messages[messages.length - 1]?.parts.some(
+                  (p) =>
+                    isTextUIPart(p) ||
+                    isToolUIPart(p) ||
+                    (isDataUIPart(p) && p.type === "data-cot-step")
+                ))) && (
+              <Message from="assistant" className="gap-1.5">
+                <div className="flex items-center gap-2 mb-0.5 select-none">
+                  <MuvxBot
+                    size="xs"
+                    coat={botCoat}
+                    mood={copilotMood}
+                    showDots
+                    isActive
+                  />
+                </div>
+                <MessageContent>
+                  <div className="flex items-center gap-2.5 py-1">
+                    <div className="flex gap-1">
+                      <span className="size-1.5 rounded-full bg-brand-muted/60 animate-bounce [animation-delay:0ms]" />
+                      <span className="size-1.5 rounded-full bg-brand-muted/60 animate-bounce [animation-delay:150ms]" />
+                      <span className="size-1.5 rounded-full bg-brand-muted/60 animate-bounce [animation-delay:300ms]" />
                     </div>
-                  </MessageContent>
-                </Message>
-              )}
+                    <span className="text-[13px] text-brand-muted">
+                      Thinking…
+                    </span>
+                  </div>
+                </MessageContent>
+              </Message>
+            )}
           </ConversationContent>
           <ConversationScrollButton />
       </Conversation>
@@ -2572,7 +2551,7 @@ export default function ChatInterface() {
           onSubmit={sendWithProvider}
           isLoading={status === "submitted" || status === "streaming"}
           onStop={stop}
-          placeholder="Ask Muvx anything…"
+          placeholder="Ask Muvx anything — loads, rates, drivers, invoices, or attach a document..."
         />
       </div>
     </div>
