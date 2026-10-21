@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { randomUUID } from "node:crypto"
-import { eq, and, or, like } from "drizzle-orm"
+import { eq, and, or, like, ilike } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { customer } from "@/lib/schema"
 import { recordAuditEvent } from "@/lib/audit"
@@ -21,7 +21,7 @@ export const queryCustomersTool = defineTmsTool({
 
     const conditions = [eq(customer.tenantId, ctx.tenantId)]
     if (query) {
-      conditions.push(or(like(customer.name, `%${query}%`), like(customer.email, `%${query}%`)) as any)
+      conditions.push(or(ilike(customer.name, `%${query}%`), ilike(customer.email, `%${query}%`)) as any)
     }
 
     const rows = await db
@@ -111,3 +111,93 @@ export const createCustomerTool = defineTmsTool({
     }
   },
 })
+
+export const updateCustomerTool = defineTmsTool({
+  name: "updateCustomer",
+  description: "Update a customer's company name, contact person, phone, email, payment terms, or credit limit.",
+  requiredPermissions: ["customers.edit"],
+  inputSchema: z.object({
+    customerIdentifier: z.string().optional().describe("Customer ID (UUID) or company name (e.g. 'ACME Logistics')"),
+    customerId: z.string().optional().describe("Customer UUID if known"),
+    name: z.string().optional().describe("Updated company name"),
+    contactName: z.string().optional().describe("Updated primary contact name"),
+    email: z.string().email().optional().describe("Updated billing / dispatch email"),
+    phone: z.string().optional().describe("Updated phone number"),
+    paymentTerms: z.enum(["Due on receipt", "Net 15", "Net 30", "Net 45", "Net 60"]).optional(),
+    creditLimit: z.number().optional().describe("Updated credit limit in USD"),
+    address: z.string().optional().describe("Updated billing address"),
+    city: z.string().optional().describe("Updated city"),
+    state: z.string().optional().describe("Updated 2-letter state code"),
+    zip: z.string().optional().describe("Updated postal code"),
+    status: z.enum(["active", "inactive", "hold"]).optional(),
+    notes: z.string().optional().describe("Updated customer notes"),
+  }),
+  execute: async (params, ctx) => {
+    if (!hasPermission(ctx, ["customers.edit", "customers.module"])) {
+      return permissionDeniedResult(["customers.edit"])
+    }
+
+    const identifier = params.customerId || params.customerIdentifier
+    if (!identifier) {
+      return { success: false, error: "Please specify customerId or customerIdentifier (name or ID)." }
+    }
+
+    const [existing] = await db
+      .select()
+      .from(customer)
+      .where(
+        and(
+          eq(customer.tenantId, ctx.tenantId),
+          or(
+            eq(customer.id, identifier),
+            ilike(customer.name, `%${identifier}%`)
+          )
+        )
+      )
+      .limit(1)
+
+    if (!existing) {
+      return { success: false, error: `Customer '${identifier}' not found in directory.` }
+    }
+
+    const updates: Record<string, any> = { updatedAt: new Date() }
+    if (params.name !== undefined) updates.name = params.name
+    if (params.contactName !== undefined) updates.contactName = params.contactName
+    if (params.email !== undefined) updates.email = params.email
+    if (params.phone !== undefined) updates.phone = params.phone
+    if (params.paymentTerms !== undefined) updates.paymentTerms = params.paymentTerms
+    if (params.creditLimit !== undefined) updates.creditLimit = String(params.creditLimit)
+    if (params.address !== undefined) updates.address = params.address
+    if (params.city !== undefined) updates.city = params.city
+    if (params.state !== undefined) updates.state = params.state
+    if (params.zip !== undefined) updates.zip = params.zip
+    if (params.status) updates.status = params.status
+    if (params.notes !== undefined) updates.notes = params.notes
+
+    await db
+      .update(customer)
+      .set(updates)
+      .where(and(eq(customer.id, existing.id), eq(customer.tenantId, ctx.tenantId)))
+
+    const finalName = params.name ?? existing.name
+
+    await recordAuditEvent({
+      actor: { id: ctx.userId, email: ctx.userEmail },
+      action: "customer.update",
+      target: { type: "customer", id: existing.id, label: finalName },
+      metadata: { updates, tenantId: ctx.tenantId },
+    })
+
+    return {
+      success: true,
+      customerId: existing.id,
+      name: finalName,
+      paymentTerms: params.paymentTerms || existing.paymentTerms,
+      creditLimit: params.creditLimit !== undefined ? `$${params.creditLimit.toLocaleString()}` : existing.creditLimit,
+      status: params.status || existing.status,
+      updatedFields: Object.keys(updates).filter((k) => k !== "updatedAt"),
+      message: `Customer '${finalName}' updated successfully.`,
+    }
+  },
+})
+

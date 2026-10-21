@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { randomUUID } from "node:crypto"
-import { eq, and, or, desc, like } from "drizzle-orm"
+import { eq, and, or, desc, like, ilike } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { load, trip, invoice } from "@/lib/schema"
 import { recordAuditEvent } from "@/lib/audit"
@@ -310,10 +310,11 @@ export const queryLoadsTool = defineTmsTool({
 
 export const updateLoadTool = defineTmsTool({
   name: "updateLoad",
-  description: "Update details, route, equipment, rates, or status of an existing freight load.",
+  description: "Update details, customer, facilities, route, equipment, rates, or status of an existing freight load.",
   requiredPermissions: ["loads.edit"],
   inputSchema: z.object({
-    loadId: z.string().describe("ID of the load to update"),
+    loadIdentifier: z.string().optional().describe("Load ID (UUID) or Load Number (e.g. 'LD-1001')"),
+    loadId: z.string().optional().describe("Load UUID if known"),
     status: z
       .enum(["available", "booked", "dispatched", "in_transit", "delivered", "completed", "cancelled"])
       .optional()
@@ -322,14 +323,22 @@ export const updateLoadTool = defineTmsTool({
     customerRate: z.number().optional().describe("Updated customer rate amount"),
     carrierRate: z.number().optional().describe("Updated carrier rate amount"),
     customerName: z.string().optional().describe("Updated customer name"),
+    originFacility: z.string().optional().describe("Updated shipper or facility name"),
     originAddress: z.string().optional().describe("Updated origin street address"),
     originCity: z.string().optional().describe("Updated origin city"),
     originState: z.string().optional().describe("Updated origin state code"),
     originZip: z.string().optional().describe("Updated origin postal/ZIP code"),
+    originContact: z.string().optional().describe("Updated origin contact person"),
+    originPhone: z.string().optional().describe("Updated origin contact phone"),
+    originAppointment: z.string().optional().describe("Updated origin appointment ISO string"),
+    destFacility: z.string().optional().describe("Updated receiver facility name"),
     destAddress: z.string().optional().describe("Updated destination street address"),
     destCity: z.string().optional().describe("Updated destination city"),
     destState: z.string().optional().describe("Updated destination state code"),
     destZip: z.string().optional().describe("Updated destination postal/ZIP code"),
+    destContact: z.string().optional().describe("Updated destination contact person"),
+    destPhone: z.string().optional().describe("Updated destination contact phone"),
+    destAppointment: z.string().optional().describe("Updated destination appointment ISO string"),
     pickupDate: z.string().optional().describe("YYYY-MM-DD pickup date"),
     deliveryDate: z.string().optional().describe("YYYY-MM-DD delivery date"),
     equipmentType: z
@@ -340,6 +349,9 @@ export const updateLoadTool = defineTmsTool({
     miles: z.number().optional().describe("Total route miles"),
     temperature: z.string().optional().describe("Reefer temperature setting"),
     isRefrigerated: z.boolean().optional(),
+    tenderNumber: z.string().optional().describe("Updated tender reference number"),
+    rateConfirmNumber: z.string().optional().describe("Updated rate confirmation reference number"),
+    bolNumber: z.string().optional().describe("Updated BOL number"),
     specialInstructions: z.string().optional().describe("Special dock or handling instructions"),
   }),
   execute: async (params, ctx) => {
@@ -347,17 +359,31 @@ export const updateLoadTool = defineTmsTool({
       return permissionDeniedResult(["loads.edit"])
     }
 
+    const identifier = params.loadId || params.loadIdentifier
+    if (!identifier) {
+      return { success: false, error: "Please specify loadId or loadIdentifier (e.g. 'LD-1001')." }
+    }
+
     const [existing] = await db
       .select()
       .from(load)
-      .where(and(eq(load.id, params.loadId), eq(load.tenantId, ctx.tenantId)))
+      .where(
+        and(
+          eq(load.tenantId, ctx.tenantId),
+          or(
+            eq(load.id, identifier),
+            eq(load.loadNumber, identifier),
+            ilike(load.loadNumber, `%${identifier}%`)
+          )
+        )
+      )
       .limit(1)
 
     if (!existing) {
-      return { success: false, error: "Load not found or unauthorized." }
+      return { success: false, error: `Load '${identifier}' not found or unauthorized.` }
     }
 
-    const updates: Record<string, any> = {}
+    const updates: Record<string, any> = { updatedAt: new Date() }
     if (params.status) updates.status = params.status
     if (params.rate !== undefined) {
       updates.rate = String(params.rate)
@@ -366,18 +392,26 @@ export const updateLoadTool = defineTmsTool({
     if (params.customerRate !== undefined) updates.customerRate = String(params.customerRate)
     if (params.carrierRate !== undefined) updates.carrierRate = String(params.carrierRate)
     if (params.customerName) updates.customerName = params.customerName
+    if (params.originFacility !== undefined) updates.originFacility = params.originFacility
     if (params.originAddress !== undefined) updates.originAddress = params.originAddress
     if (params.originCity !== undefined) updates.originCity = params.originCity
     if (params.originState !== undefined) {
       updates.originState = normalizeSubdivisionCode("US", params.originState)
     }
     if (params.originZip !== undefined) updates.originZip = params.originZip
+    if (params.originContact !== undefined) updates.originContact = params.originContact
+    if (params.originPhone !== undefined) updates.originPhone = params.originPhone
+    if (params.originAppointment) updates.originAppointment = new Date(params.originAppointment)
+    if (params.destFacility !== undefined) updates.destFacility = params.destFacility
     if (params.destAddress !== undefined) updates.destAddress = params.destAddress
     if (params.destCity !== undefined) updates.destCity = params.destCity
     if (params.destState !== undefined) {
       updates.destState = normalizeSubdivisionCode("US", params.destState)
     }
     if (params.destZip !== undefined) updates.destZip = params.destZip
+    if (params.destContact !== undefined) updates.destContact = params.destContact
+    if (params.destPhone !== undefined) updates.destPhone = params.destPhone
+    if (params.destAppointment) updates.destAppointment = new Date(params.destAppointment)
     if (params.pickupDate) updates.pickupDate = new Date(params.pickupDate)
     if (params.deliveryDate) updates.deliveryDate = new Date(params.deliveryDate)
     if (params.equipmentType) updates.loadType = params.equipmentType
@@ -386,12 +420,15 @@ export const updateLoadTool = defineTmsTool({
     if (params.miles !== undefined) updates.miles = String(params.miles)
     if (params.temperature !== undefined) updates.temperature = params.temperature
     if (params.isRefrigerated !== undefined) updates.isRefrigerated = params.isRefrigerated
+    if (params.tenderNumber !== undefined) updates.tenderNumber = params.tenderNumber
+    if (params.rateConfirmNumber !== undefined) updates.rateConfirmNumber = params.rateConfirmNumber
+    if (params.bolNumber !== undefined) updates.bolNumber = params.bolNumber
     if (params.specialInstructions !== undefined) updates.specialInstructions = params.specialInstructions
 
     await db
       .update(load)
       .set(updates)
-      .where(and(eq(load.id, params.loadId), eq(load.tenantId, ctx.tenantId)))
+      .where(and(eq(load.id, existing.id), eq(load.tenantId, ctx.tenantId)))
 
     await recordAuditEvent({
       actor: { id: ctx.userId, email: ctx.userEmail },
@@ -404,7 +441,7 @@ export const updateLoadTool = defineTmsTool({
       success: true,
       loadId: existing.id,
       loadNumber: existing.loadNumber,
-      updatedFields: Object.keys(updates),
+      updatedFields: Object.keys(updates).filter((k) => k !== "updatedAt"),
       status: params.status || existing.status,
       message: `Load #${existing.loadNumber} updated successfully.`,
     }

@@ -257,13 +257,20 @@ Operating Context:
 - Mode: ${isAllowAll ? "FULL AUTONOMY (Approvals pre-granted for authorized actions)" : "SUPERVISED (Request confirmation for impactful writes)"}
 - Permissions: loads.create=${perms.has("loads.create")}, trips.create=${perms.has("trips.create")}, fleet.manage=${perms.has("fleet.trucks.create")}, invoices.manage=${perms.has("invoices.view_all")}, expenses.manage=${perms.has("expenses.view_all")}.
 
-Freight Dispatch & Load Creation Protocol:
-1. When asked to create, book, or draft a load (or reading rate confirmations, BOLs, tenders, carrier agreements, emails, or images):
-   - You MUST extract and provide ALL available fields to 'bookLoad': customerName, loadNumber, tenderNumber, rateConfirmNumber, originFacility, originAddress, originCity, originState (2-letter code), originZip, originAppointment, pickupDate, destFacility, destAddress, destCity, destState (2-letter code), destZip, destAppointment, deliveryDate, rate, customerRate, carrierRate, equipmentType, commodity, weight, miles, temperature (for Reefer), and specialInstructions.
-   - NEVER drop street addresses, facility names, or postal codes if they are present in the text, document, or rate confirmation.
-   - If an attachment or rate confirmation is provided, parse every stop, dock time, shipper name, consignee name, and equipment spec into the tool call.
-2. For state/region values, always provide the standard 2-letter postal code (e.g. "TX", "GA", "IL", "ON").
-3. After booking, summarize the complete lane, schedule, rate, equipment, and reference numbers clearly.
+Enterprise Operational & Tool Execution Capabilities:
+1. Loads & Freight:
+   - Create/Book ('bookLoad'): Extract ALL available fields (customer, loadNumber, tenderNumber, rateConfirmNumber, origin/destination facilities, street addresses, cities, 2-letter state codes, zip codes, appointments, rates, equipment, commodity, weight, miles, reefer temperature, special instructions).
+   - Edit/Update ('updateLoad'): You CAN edit load details, rates, customer names, origin/destination facilities, addresses, appointments, equipment, and status. Accept either load number (e.g. 'LD-1001') or UUID.
+2. Fleet, Drivers & Assets:
+   - Drivers ('updateDriver', 'createDriver'): You CAN create and edit driver names (firstName, lastName), CDL numbers, licensing states, expiration dates, phone, email, pay rates, notes, and duty status. You can look up drivers by name (e.g. 'John Doe') or UUID.
+   - Tractors ('updateTruck', 'createTruck'): You CAN create and edit tractor unit numbers, makes, models, years, VINs, license plates, mileage, service schedules, and status. You can look up trucks by unit number (e.g. 'TRK-104') or UUID.
+   - Trailers ('updateTrailer', 'createTrailer'): You CAN create and edit trailer unit numbers, types (Dry Van, Reefer, Flatbed, etc.), lengths, plates, and status.
+3. Customers & Partner Carriers:
+   - Customers ('updateCustomer', 'createCustomer', 'queryCustomers'): You CAN create and edit customer names, contacts, emails, phones, payment terms (Net 30, Net 15, etc.), and credit limits. Lookup by company name or UUID.
+   - Carriers ('updateCarrier', 'createCarrier', 'queryCarriers'): You CAN create and edit carrier legal names, MC#, DOT#, dispatch contacts, insurance expiration, and payment terms. Lookup by carrier name, MC#, or UUID.
+4. Trips & Dispatch:
+   - Dispatch ('dispatchTrip'): You can assign active loads to drivers, tractor units, or partner carriers directly by human-friendly identifiers (e.g. loadNumber 'LD-1001', driverName 'John Doe', truckUnit '104').
+   - Trip Updates ('updateTrip', 'updateTripStatus'): You CAN reassign drivers, tractors, trailers, or carriers, and update trip progress (dispatched, in_transit, completed) and actual mileage.
 ${memorySnippet}${customInstructionsSnippet}`
 
     const toolCtx: ToolContext = {
